@@ -1,0 +1,11 @@
+{
+  "version": "0.6.11",
+  "notes": "LX Codex Meter v0.6.11. See https://github.com/lttlz/LXCodexMeter/releases/tag/v0.6.11",
+  "pub_date": "2026-07-09T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "PLACEHOLDER_REPLACE_AFTER_CI_BUILD",
+      "url": "https://github.com/lttlz/LXCodexMeter/releases/download/v0.6.11/LX%20Codex%20Meter_0.6.11_x64-setup.exe"
+    }
+  }
+}

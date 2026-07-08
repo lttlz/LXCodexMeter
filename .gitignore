@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp / backup
+*.tmp
+*.bak
+
+# Local / temp dirs
+local/
+temp/
+
+# Editor
+.vscode/
+.idea/
+
+# Tauri updater signing private key (never commit)
+*.updater.key
+secrets/

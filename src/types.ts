@@ -1,0 +1,38 @@
+export type SourceMode = 'app_server' | 'auto' | 'client_window' | 'client_watch';
+
+export type LimitWindow = {
+  label: string;
+  used_percent: number | null;
+  remaining_percent: number | null;
+  window_duration_mins: number | null;
+  resets_at: number | null;
+  reset_text: string | null;
+  reached_type: string | null;
+};
+
+export type CodexMeterStatus = {
+  ok: boolean;
+  message: string;
+  source_mode: SourceMode | string;
+  auth_mode: string | null;
+  plan_type: string | null;
+  primary: LimitWindow | null;
+  secondary: LimitWindow | null;
+  credit_balance: number | null;
+  credit_limit: number | null;
+  reset_credits_available: number | null;
+  updated_at_ms: number;
+};
+
+export type MeterConfig = {
+  refresh_interval_secs: number;
+  show_floating_window: boolean;
+  opacity: number;
+  always_on_top: boolean;
+  compact: boolean;
+  ui_scale: number;
+  taskbar_strip: boolean;
+  show_reset_time: boolean;
+  auto_update: boolean;
+  source_mode: SourceMode;
+};

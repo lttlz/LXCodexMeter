@@ -1,0 +1,225 @@
+:root {
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  color: #eef4ff;
+  background: transparent;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { width: 100%; height: 100%; margin: 0; background: transparent; overflow: hidden; }
+body, #root { display: flex; align-items: stretch; justify-content: flex-start; }
+button, select, input, textarea { font-family: inherit; }
+button { -webkit-app-region: no-drag; }
+
+.meter {
+  --base-width: 215px;
+  --base-height: 178px;
+  --content-scale: 1;
+  width: 100vw;
+  height: 100vh;
+  padding: 0;
+  color: #eef4ff;
+  border-radius: 4px;
+  background: rgba(14, 19, 32, 0.92);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.meter-content {
+  width: var(--base-width);
+  height: var(--base-height);
+  min-width: var(--base-width);
+  min-height: var(--base-height);
+  transform: scale(var(--content-scale));
+  transform-origin: left top;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.meter.settings-open .panel { height: 100%; overflow: hidden; }
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 3px;
+  padding: 8px 6px 6px 6px;
+  user-select: none;
+  cursor: move;
+}
+.title-drag { flex: 0 1 auto; min-width: 0; cursor: move; overflow: hidden; }
+.title-spacer-drag { flex: 1 1 auto; align-self: stretch; min-width: 0; cursor: move; }
+.name { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan { display: none; }
+
+.actions { display: flex; gap: 3px; flex: 0 0 auto; margin-left: 0; }
+.actions button,
+.client-tools button,
+.pastebox button,
+.strip-actions button {
+  min-width: 21px;
+  height: 21px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #eef4ff;
+  background: rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+}
+.actions button { width: 21px; padding: 0; }
+.actions button:disabled,
+.client-tools button:disabled,
+.pastebox button:disabled,
+.strip-actions button:disabled { opacity: 0.5; cursor: default; }
+.client-tools button:hover,
+.pastebox button:hover,
+.actions button:hover,
+.strip-actions button:hover { background: rgba(255, 255, 255, 0.12); }
+
+.content { flex: 1 1 auto; min-height: 0; padding: 0 6px 8px 6px; }
+.drag-zone { cursor: move; }
+.row {
+  display: grid;
+  grid-template-columns: 36px 40px 1fr;
+  align-items: baseline;
+  gap: 3px;
+  padding: 4px 0;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.label { color: rgba(238, 244, 255, 0.72); font-size: 12px; }
+.value { font-size: 18px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
+.sub { font-size: 10px; font-variant-numeric: tabular-nums; color: rgba(238, 244, 255, 0.52); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.footer { margin-top: 3px; font-variant-numeric: tabular-nums; font-size: 10px; color: rgba(238, 244, 255, 0.48); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.message { flex: 1 1 auto; padding: 14px 12px 14px; color: rgba(238, 244, 255, 0.78); font-size: 12px; line-height: 1.5; }
+.error { color: #ffc7c7; }
+
+.client-tools { display: flex; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid rgba(255,255,255,0.08); }
+.client-tools button { flex: 1; font-size: 11px; padding: 0 8px; }
+
+.pastebox { display: grid; gap: 7px; padding: 10px 12px 12px; border-top: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.035); }
+.hint { font-size: 10px; line-height: 1.35; color: rgba(238,244,255,0.58); }
+.warn { color: #ffd9a6; }
+.pastebox textarea {
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 8px;
+  color: #eef4ff;
+  background: rgba(0,0,0,0.18);
+  outline: none;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.pastebox textarea:focus { border-color: rgba(155,190,255,0.45); }
+.pastebox button { width: 100%; font-size: 11px; }
+
+.settings {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 8px;
+  padding: 10px 10px 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+}
+.settings label {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  color: rgba(238, 244, 255, 0.72);
+}
+.settings .check { grid-template-columns: 18px 1fr; }
+.settings select, .settings input[type="range"] { width: 100%; }
+.settings-button {
+  height: 28px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 8px;
+  color: #eef4ff;
+  background: rgba(255,255,255,0.08);
+  cursor: pointer;
+}
+.settings-button:hover { background: rgba(255,255,255,0.14); }
+.settings-button.secondary { background: rgba(255,255,255,0.045); }
+.settings select {
+  min-width: 0;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  color: #eef4ff;
+  background: rgba(0,0,0,0.18);
+  padding: 3px 6px;
+}
+
+.about {
+  display: grid;
+  gap: 3px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(238,244,255,0.62);
+}
+.about strong { color: rgba(238,244,255,0.86); }
+.about span { color: rgba(238,244,255,0.52); }
+.about a { color: rgba(155,190,255,0.9); text-decoration: none; }
+.about a:hover { text-decoration: underline; }
+
+.strip { color: #f4f7ff; }
+.strip-panel {
+  width: 100%;
+  min-height: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 2px 4px 2px 6px;
+  user-select: none;
+  background: transparent;
+}
+.strip.settings-open .strip-panel { height: 40px; flex: 0 0 40px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.strip-drag { flex: 0 0 auto; min-width: 0; cursor: move; }
+.strip-lines {
+  display: inline-block;
+  width: max-content;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 11px;
+  line-height: 1.36;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.strip-lines span { margin-left: 6px; color: rgba(244,247,255,0.72); }
+.strip-actions { display: none; }
+.strip-settings {
+  position: static;
+  width: 100%;
+  flex: 1 1 auto;
+  overflow: hidden;
+  background: transparent;
+}
+.strip-settings .settings { height: 100%; align-content: start; }
+
+/* Keep the normal floating window visually consistent with strip mode and avoid default scrollbars. */
+.panel::-webkit-scrollbar,
+.strip-settings::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
