@@ -42,13 +42,13 @@ LX Codex Meter：
 推荐安装包：
 
 ```
-LX Codex Meter_0.6.12_x64-setup.exe
+LX Codex Meter_0.6.13_x64-setup.exe
 ```
 
 备用安装包：
 
 ```
-LX Codex Meter_0.6.12_x64_en-US.msi
+LX Codex Meter_0.6.13_x64_en-US.msi
 ```
 
 ### 下载地址
@@ -94,13 +94,13 @@ The automatic update feature only contacts the official GitHub / Gitee release e
 Recommended installer:
 
 ```
-LX Codex Meter_0.6.12_x64-setup.exe
+LX Codex Meter_0.6.13_x64-setup.exe
 ```
 
 Alternative installer:
 
 ```
-LX Codex Meter_0.6.12_x64_en-US.msi
+LX Codex Meter_0.6.13_x64_en-US.msi
 ```
 
 ### Downloads

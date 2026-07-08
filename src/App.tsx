@@ -10,7 +10,7 @@ import donationQr from './assets/support/donation-qr.png';
 import wechatQr from './assets/support/wechat-qr.png';
 
 const APP_NAME = 'LX Codex Meter';
-const APP_VERSION = '0.6.12';
+const APP_VERSION = '0.6.13';
 const APP_AUTHOR = 'lttlz';
 const GITHUB_URL = 'https://github.com/lttlz/LXCodexMeter';
 const GITEE_URL = 'https://gitee.com/lttlz/LXCodexMeter';
@@ -46,12 +46,16 @@ function getBaseWindowSize(
   if (strip) {
     return {
       width: open ? 215 : stripWidth,
-      height: open ? 430 : 34,
+      // v0.6.12 added a support section with two QR codes; the old 430px height
+      // clipped the about / support area. Lift to 660 so settings fit and the
+      // panel can scroll if it ever overflows.
+      height: open ? 660 : 34,
     };
   }
   return {
     width: open ? 215 : 215,
-    height: open ? 470 : statusOk === false ? 150 : 178,
+    // Same reason as strip: 470 was too short once the support QRs landed.
+    height: open ? 660 : statusOk === false ? 150 : 178,
   };
 }
 
@@ -470,7 +474,13 @@ export default function App() {
             </div>
           </header>
 
-          {!status ? (
+          {settingsOpen ? (
+            <SettingsPanel
+              config={config}
+              saveConfig={saveConfig}
+              onClose={closeSettings}
+            />
+          ) : !status ? (
             <div className="message drag-zone" onMouseDown={(event) => startWindowDrag(event)}>正在读取 Codex 额度…</div>
           ) : status.ok ? (
             <div className="content drag-zone" onMouseDown={(event) => startWindowDrag(event)}>
@@ -485,14 +495,6 @@ export default function App() {
             </div>
           ) : (
             <div className="message error drag-zone" onMouseDown={(event) => startWindowDrag(event)}>{status.message || '读取失败'}</div>
-          )}
-
-          {settingsOpen && (
-            <SettingsPanel
-              config={config}
-              saveConfig={saveConfig}
-              onClose={closeSettings}
-            />
           )}
         </section>
       </div>

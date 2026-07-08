@@ -133,6 +133,7 @@ button { -webkit-app-region: no-drag; }
 
 .settings {
   flex: 0 0 auto;
+  min-height: 0;
   display: grid;
   gap: 8px;
   padding: 10px 10px 12px;
@@ -212,6 +213,7 @@ button { -webkit-app-region: no-drag; }
   position: static;
   width: 100%;
   flex: 1 1 auto;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   background: transparent;
@@ -223,6 +225,24 @@ button { -webkit-app-region: no-drag; }
 .strip-settings::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+/* Settings panel needs a visible (but subtle) scrollbar so users can tell the
+   bottom is reachable instead of assuming it is clipped. Non-settings views
+   keep the hidden scrollbar above. */
+.meter.settings-open .panel::-webkit-scrollbar,
+.strip-settings::-webkit-scrollbar {
+  width: 6px;
+  height: 0;
+}
+.meter.settings-open .panel::-webkit-scrollbar-thumb,
+.strip-settings::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+}
+.meter.settings-open .panel::-webkit-scrollbar-track,
+.strip-settings::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .update-check-row {
