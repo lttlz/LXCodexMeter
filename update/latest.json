@@ -1,11 +1,19 @@
 {
   "version": "0.6.11",
-  "notes": "LX Codex Meter v0.6.11. See https://github.com/lttlz/LXCodexMeter/releases/tag/v0.6.11",
-  "pub_date": "2026-07-09T00:00:00Z",
+  "notes": "LX Codex Meter v0.6.11",
+  "pub_date": "2026-07-08T18:54:13.276Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "PLACEHOLDER_REPLACE_AFTER_CI_BUILD",
-      "url": "https://github.com/lttlz/LXCodexMeter/releases/download/v0.6.11/LX%20Codex%20Meter_0.6.11_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTYjFuSTdyUVI0RFE2S2U3UzJ6SWx5aG9hVmRreTVnUHdrc0RTNG1YNGRKQ3piUnZvcHJUYjNYRnNvazZrWUkrN25QREFTcFJ3UTV0OUhNQTZwaGs2dGhSeU5LUDN0MXdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzNTM2ODQ5CWZpbGU6TFggQ29kZXggTWV0ZXJfMC42LjExX3g2NC1zZXR1cC5leGUKaVI4NGptSTBrOHRUTlozNWQza0NkanZDTXAyTFhJbnhFbHd3NElleFNBakpDYk1QQys2V0IwV2Z3U1B2b0pMWjVTUjhxaWhlTVNaVGtxQ3pVZFV5QWc9PQo=",
+      "url": "https://github.com/lttlz/LXCodexMeter/releases/download/v0.6.11/LX.Codex.Meter_0.6.11_x64-setup.exe"
+    },
+    "windows-x86_64-nsis": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTYjFuSTdyUVI0RFE2S2U3UzJ6SWx5aG9hVmRreTVnUHdrc0RTNG1YNGRKQ3piUnZvcHJUYjNYRnNvazZrWUkrN25QREFTcFJ3UTV0OUhNQTZwaGs2dGhSeU5LUDN0MXdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzNTM2ODQ5CWZpbGU6TFggQ29kZXggTWV0ZXJfMC42LjExX3g2NC1zZXR1cC5leGUKaVI4NGptSTBrOHRUTlozNWQza0NkanZDTXAyTFhJbnhFbHd3NElleFNBakpDYk1QQys2V0IwV2Z3U1B2b0pMWjVTUjhxaWhlTVNaVGtxQ3pVZFV5QWc9PQo=",
+      "url": "https://github.com/lttlz/LXCodexMeter/releases/download/v0.6.11/LX.Codex.Meter_0.6.11_x64-setup.exe"
+    },
+    "windows-x86_64-msi": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTYjFuSTdyUVI0RGYvWDM3ZXVRTjFvS0thdDJ1WjZqMnJHYUpUS1dmQjlZUjA1d21wUlBIdHAvT005THVtaTBlZ3g2R0lENVA0TThEczZxT0JUaS9PZlNhR1gxVkNjb3dzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzNTM2ODQ5CWZpbGU6TFggQ29kZXggTWV0ZXJfMC42LjExX3g2NF9lbi1VUy5tc2kKL1htQTlVSm1hNWJIS0srRkhqQm5kU3RvVVV0MHlyVURvVUcxNXhiTmZyWVJaZGFMQmdGeUYyOHFETHF5TkVHUnJZVzZKcjNoVVNUM1VYMUxLVTR6REE9PQo=",
+      "url": "https://github.com/lttlz/LXCodexMeter/releases/download/v0.6.11/LX.Codex.Meter_0.6.11_x64_en-US.msi"
     }
   }
 }
