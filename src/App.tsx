@@ -6,11 +6,14 @@ import { LogicalSize } from '@tauri-apps/api/dpi';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Menu } from '@tauri-apps/api/menu';
 import type { CodexMeterStatus, LimitWindow, MeterConfig } from './types';
+import donationQr from './assets/support/donation-qr.png';
+import wechatQr from './assets/support/wechat-qr.png';
 
 const APP_NAME = 'LX Codex Meter';
-const APP_VERSION = '0.6.11';
+const APP_VERSION = '0.6.12';
 const APP_AUTHOR = 'lttlz';
 const GITHUB_URL = 'https://github.com/lttlz/LXCodexMeter';
+const GITEE_URL = 'https://gitee.com/lttlz/LXCodexMeter';
 
 type WindowBaseSize = {
   width: number;
@@ -266,13 +269,39 @@ export default function App() {
 
   useEffect(() => {
     const win = getCurrentWindow();
-    win.setAlwaysOnTop(config.always_on_top).catch(() => undefined);
+    const wantTop = config.taskbar_strip || config.always_on_top;
+    win.setAlwaysOnTop(wantTop).catch(() => undefined);
     if (config.show_floating_window) {
       win.show().catch(() => undefined);
     } else {
       win.hide().catch(() => undefined);
     }
-  }, [config.always_on_top, config.show_floating_window]);
+  }, [config.always_on_top, config.show_floating_window, config.taskbar_strip]);
+
+  // Taskbar strip keep-alive: reassert always-on-top every few seconds so the
+  // pseudo taskbar strip is not occluded by the real Windows taskbar or other
+  // topmost windows. Only runs in strip mode; never forces a hidden window
+  // back to visible and never steals focus.
+  useEffect(() => {
+    if (!config.taskbar_strip) return;
+    const win = getCurrentWindow();
+    const id = window.setInterval(() => {
+      win.isVisible()
+        .then((visible) => {
+          if (visible) win.setAlwaysOnTop(true).catch(() => undefined);
+        })
+        .catch(() => undefined);
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [config.taskbar_strip]);
+
+  // Re-assert topmost right after the settings panel toggles, because resizing
+  // the window can occasionally drop the always-on-top flag on Windows.
+  useEffect(() => {
+    if (!config.taskbar_strip) return;
+    const win = getCurrentWindow();
+    win.setAlwaysOnTop(true).catch(() => undefined);
+  }, [config.taskbar_strip, settingsOpen]);
 
   useEffect(() => {
     if (!configReady) return;
@@ -480,6 +509,27 @@ function SettingsPanel({
   saveConfig: (next: MeterConfig) => Promise<void>;
   onClose: () => void;
 }) {
+  const [updateStatus, setUpdateStatus] = useState('');
+  const [updateChecking, setUpdateChecking] = useState(false);
+
+  const runUpdateCheck = useCallback(async () => {
+    if (updateChecking) return;
+    setUpdateChecking(true);
+    setUpdateStatus('正在检查更新...');
+    try {
+      const result = await invoke<string | null>('check_for_updates');
+      if (result) {
+        setUpdateStatus(`发现新版本：v${result}，请前往发布页下载更新`);
+      } else {
+        setUpdateStatus('当前已是最新版本');
+      }
+    } catch {
+      setUpdateStatus('检查更新失败，请稍后重试');
+    } finally {
+      setUpdateChecking(false);
+    }
+  }, [updateChecking]);
+
   return (
     <div className="settings">
       <label>
@@ -529,6 +579,17 @@ function SettingsPanel({
         />
         自动更新
       </label>
+      <div className="update-check-row">
+        <button
+          className="settings-button"
+          type="button"
+          onClick={() => void runUpdateCheck()}
+          disabled={updateChecking}
+        >
+          {updateChecking ? '正在检查...' : '立即检查更新'}
+        </button>
+        {updateStatus && <span className="update-status">{updateStatus}</span>}
+      </div>
       <label className="check">
         <input
           type="checkbox"
@@ -548,7 +609,22 @@ function SettingsPanel({
       <div className="about">
         <div><strong>{APP_NAME}</strong> <span>v{APP_VERSION}</span></div>
         <div>作者：{APP_AUTHOR}</div>
-        <div>GitHub: <a href={GITHUB_URL} onClick={(e) => { e.preventDefault(); void invoke('open_project_url').catch(() => undefined); }}>{GITHUB_URL}</a></div>
+        <div>GitHub: <a href={GITHUB_URL} onClick={(e) => { e.preventDefault(); void invoke('open_project_url', { url: GITHUB_URL }).catch(() => undefined); }}>{GITHUB_URL}</a></div>
+        <div>Gitee: <a href={GITEE_URL} onClick={(e) => { e.preventDefault(); void invoke('open_project_url', { url: GITEE_URL }).catch(() => undefined); }}>{GITEE_URL}</a></div>
+      </div>
+      <div className="support-section">
+        <div className="support-title">支持与联系</div>
+        <p className="support-desc">本软件完全免费开放全部功能，无付费限制、无强制打赏。若您觉得工具实用，可自愿小额赞赏支持后续维护更新，支持与否不影响任何使用权限。</p>
+        <div className="support-qrs">
+          <div className="qr-item">
+            <img src={donationQr} alt="赞赏码" />
+            <span>自愿赞赏</span>
+          </div>
+          <div className="qr-item">
+            <img src={wechatQr} alt="加好友" />
+            <span>添加好友</span>
+          </div>
+        </div>
       </div>
     </div>
   );

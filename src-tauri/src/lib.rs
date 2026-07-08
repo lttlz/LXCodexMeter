@@ -54,15 +54,22 @@ fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+const GITHUB_URL: &str = "https://github.com/lttlz/LXCodexMeter";
+const GITEE_URL: &str = "https://gitee.com/lttlz/LXCodexMeter";
+
 #[tauri::command]
-fn open_project_url() -> Result<(), String> {
-    const URL: &str = "https://github.com/lttlz/LXCodexMeter";
+fn open_project_url(url: Option<String>) -> Result<(), String> {
+    let target = match url.as_deref() {
+        None | Some(GITHUB_URL) => GITHUB_URL,
+        Some(GITEE_URL) => GITEE_URL,
+        Some(_) => return Err("unsupported project url".to_string()),
+    };
 
     #[cfg(target_os = "windows")]
     {
         Command::new("rundll32")
             .arg("url.dll,FileProtocolHandler")
-            .arg(URL)
+            .arg(target)
             .spawn()
             .map_err(|e| format!("failed to open url: {e}"))?;
         Ok(())
@@ -71,7 +78,7 @@ fn open_project_url() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         Command::new("open")
-            .arg(URL)
+            .arg(target)
             .spawn()
             .map_err(|e| format!("failed to open url: {e}"))?;
         Ok(())
@@ -80,7 +87,7 @@ fn open_project_url() -> Result<(), String> {
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         Command::new("xdg-open")
-            .arg(URL)
+            .arg(target)
             .spawn()
             .map_err(|e| format!("failed to open url: {e}"))?;
         Ok(())
