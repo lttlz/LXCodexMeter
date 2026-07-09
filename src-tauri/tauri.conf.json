@@ -35,6 +35,7 @@
     "createUpdaterArtifacts": true,
     "windows": {
       "nsis": {
+        "template": "nsis/installer.nsi",
         "installerIcon": "icons/icon.ico",
         "languages": ["SimpChinese", "English"],
         "displayLanguageSelector": true
