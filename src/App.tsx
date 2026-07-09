@@ -57,22 +57,23 @@ function getBaseWindowSize(
   strip: boolean,
   open: boolean,
   statusOk: boolean | null | undefined,
-  stripWidth: number,
   preservedWidth: number,
   userResized: boolean,
 ): WindowBaseSize {
+  // All four states (normal, normal-settings, strip, strip-settings) share the
+  // same default width (215). When the user has manually resized, that width is
+  // reused across all states so it never snaps back. Strip mode never auto-
+  // measures content width; long content is handled by layout compression.
+  const w = userResized ? preservedWidth : DEFAULT_W;
   if (strip) {
     if (open) {
-      const w = userResized ? preservedWidth : DEFAULT_W;
       return { width: w, height: Math.round(w * SETTINGS_RATIO) };
     }
-    return { width: userResized ? preservedWidth : stripWidth, height: 34 };
+    return { width: w, height: 34 };
   }
   if (open) {
-    const w = userResized ? preservedWidth : DEFAULT_W;
     return { width: w, height: Math.round(w * SETTINGS_RATIO) };
   }
-  const w = userResized ? preservedWidth : DEFAULT_W;
   const ratio = statusOk === false ? ERROR_RATIO : NORMAL_RATIO;
   return { width: w, height: Math.round(w * ratio) };
 }
@@ -196,11 +197,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [viewportSize, setViewportSize] = useState<WindowBaseSize>(() => getViewportSize());
-  const [stripContentWidth, setStripContentWidth] = useState(292);
   const programmaticResizeRef = useRef(false);
   const programmaticResizeTimerRef = useRef<number | undefined>(undefined);
   const lastBaseKeyRef = useRef('');
-  const stripLinesRef = useRef<HTMLDivElement | null>(null);
   const preservedWidthRef = useRef(DEFAULT_W);
   const userResizedRef = useRef(false);
   const startupDoneRef = useRef(false);
@@ -210,8 +209,8 @@ export default function App() {
   const t = useMemo<TFunc>(() => (key: string) => tr(lang, key), [lang]);
 
   const baseSize = useMemo(
-    () => getBaseWindowSize(config.taskbar_strip, settingsOpen, status?.ok, stripContentWidth, preservedWidthRef.current, userResizedRef.current),
-    [config.taskbar_strip, settingsOpen, status?.ok, stripContentWidth],
+    () => getBaseWindowSize(config.taskbar_strip, settingsOpen, status?.ok, preservedWidthRef.current, userResizedRef.current),
+    [config.taskbar_strip, settingsOpen, status?.ok],
   );
   const rawAutoMaxScale = Math.min(viewportSize.width / baseSize.width, viewportSize.height / baseSize.height);
   const contentScale = Number.isFinite(rawAutoMaxScale) && rawAutoMaxScale > 0
@@ -398,19 +397,6 @@ export default function App() {
   }, [baseSize, config.taskbar_strip, configReady, resizeWindowToBase, settingsOpen, status?.ok]);
 
   useEffect(() => {
-    if (!config.taskbar_strip || settingsOpen) return;
-    const frameId = window.requestAnimationFrame(() => {
-      const lines = stripLinesRef.current;
-      if (!lines) return;
-      const contentWidth = Math.ceil(lines.scrollWidth || lines.offsetWidth || lines.getBoundingClientRect().width || 0);
-      const measured = contentWidth + 12;
-      const nextWidth = Math.max(150, measured);
-      setStripContentWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
-    });
-    return () => window.cancelAnimationFrame(frameId);
-  }, [config.show_reset_time, config.taskbar_strip, settingsOpen, status]);
-
-  useEffect(() => {
     refresh();
   }, [refresh]);
 
@@ -504,7 +490,7 @@ export default function App() {
         <div className="meter-content">
           <section className="strip-panel">
             <div className="strip-drag" onMouseDown={(event) => startWindowDrag(event)}>
-              <div className="strip-lines" ref={stripLinesRef}>
+              <div className="strip-lines">
                 <div>
                   <b>{t('strip5h')}</b>: {pct(status?.primary?.remaining_percent ?? null)} <span>{t('stripWeek')}</span>: {pct(status?.secondary?.remaining_percent ?? null)} <span>{t('stripVoucher')}</span>: {status?.reset_credits_available ?? 0}
                   {config.show_reset_time && <span>{t('stripData')}</span>}

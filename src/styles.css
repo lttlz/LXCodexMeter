@@ -204,16 +204,18 @@ button { -webkit-app-region: no-drag; }
   background: transparent;
 }
 .strip.settings-open .strip-panel { height: 40px; flex: 0 0 40px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-.strip-drag { flex: 0 0 auto; min-width: 0; cursor: move; }
+.strip-drag { flex: 1 1 auto; min-width: 0; cursor: move; }
 .strip-lines {
-  display: inline-block;
-  width: max-content;
+  display: block;
+  width: 100%;
+  overflow: hidden;
   font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   font-size: 11px;
   line-height: 1.36;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+.strip-lines > div { overflow: hidden; text-overflow: ellipsis; }
 .strip-lines span { margin-left: 6px; color: rgba(244,247,255,0.72); }
 .strip-actions { display: none; }
 .strip-settings {
