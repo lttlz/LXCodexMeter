@@ -10,7 +10,7 @@ const zh: Dict = {
   failed: '读取失败',
 
   primary: '主额度',
-  secondary: '副额度',
+  secondary: '周额度',
   credits: 'Credits',
   used: '用',
   resetLabel: '重置',
@@ -36,7 +36,7 @@ const zh: Dict = {
   backToFloat: '切回默认悬浮窗',
   closeSettings: '关闭设置',
   autostart: '开机自动启动 LX Codex Meter',
-  startHidden: '启动后隐藏到托盘',
+  startHidden: '开机启动后隐藏到托盘',
   autoShowCodex: 'Codex 运行时自动显示',
   autoHideCodex: 'Codex 关闭后自动隐藏到托盘',
   language: '语言',
@@ -69,6 +69,7 @@ const zh: Dict = {
   menuCloseSettings: '关闭设置',
   menuStripOn: '切换任务栏条模式',
   menuStripOff: '切回默认悬浮窗',
+  menuHideTray: '隐藏到托盘',
   menuQuit: '退出',
 
   titleRefresh: '刷新',
@@ -82,11 +83,11 @@ const en: Dict = {
   failed: 'Failed to read',
 
   primary: 'Primary',
-  secondary: 'Weekly',
+  secondary: 'Wk',
   credits: 'Credits',
-  used: 'Used',
-  resetLabel: 'Reset',
-  resetCredits: 'Voucher',
+  used: 'U',
+  resetLabel: 'Rst',
+  resetCredits: 'Vch',
   data: 'Data',
   unknown: 'Unknown',
 
@@ -108,7 +109,7 @@ const en: Dict = {
   backToFloat: 'Back to floating window',
   closeSettings: 'Close settings',
   autostart: 'Launch LX Codex Meter on system startup',
-  startHidden: 'Start hidden to tray',
+  startHidden: 'Start hidden after Windows startup',
   autoShowCodex: 'Auto-show when Codex is running',
   autoHideCodex: 'Auto-hide to tray when Codex closes',
   language: 'Language',
@@ -141,6 +142,7 @@ const en: Dict = {
   menuCloseSettings: 'Close settings',
   menuStripOn: 'Toggle strip mode',
   menuStripOff: 'Back to floating window',
+  menuHideTray: 'Hide to tray',
   menuQuit: 'Quit',
 
   titleRefresh: 'Refresh',

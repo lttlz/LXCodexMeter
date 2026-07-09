@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ButtonHTMLAttributes, CSSProperties, MouseEvent, SyntheticEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -197,6 +197,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [viewportSize, setViewportSize] = useState<WindowBaseSize>(() => getViewportSize());
+  const [settingsContentHeight, setSettingsContentHeight] = useState(0);
   const programmaticResizeRef = useRef(false);
   const programmaticResizeTimerRef = useRef<number | undefined>(undefined);
   const lastBaseKeyRef = useRef('');
@@ -204,18 +205,35 @@ export default function App() {
   const userResizedRef = useRef(false);
   const startupDoneRef = useRef(false);
   const skipAutoShowRef = useRef(false);
+  const settingsPanelRef = useRef<HTMLDivElement | null>(null);
+  const userSettingsHeightRef = useRef(0);
+  const settingsOpenRef = useRef(false);
 
   const lang = config.language;
   const t = useMemo<TFunc>(() => (key: string) => tr(lang, key), [lang]);
 
-  const baseSize = useMemo(
-    () => getBaseWindowSize(config.taskbar_strip, settingsOpen, status?.ok, preservedWidthRef.current, userResizedRef.current),
-    [config.taskbar_strip, settingsOpen, status?.ok],
-  );
+  const baseSize = useMemo(() => {
+    const w = userResizedRef.current ? preservedWidthRef.current : DEFAULT_W;
+    if (settingsOpen) {
+      // Settings page: height = measured content height (+padding) so all
+      // content shows without a scrollbar by default. If the user has manually
+      // dragged the height, honor that height instead (scrollbar appears then).
+      const measured = settingsContentHeight > 0 ? settingsContentHeight + 24 : 0;
+      const h = userSettingsHeightRef.current > 0
+        ? userSettingsHeightRef.current
+        : (measured > 0 ? measured : Math.round(w * SETTINGS_RATIO));
+      return { width: w, height: Math.max(220, h) };
+    }
+    if (config.taskbar_strip) return { width: w, height: 34 };
+    const ratio = status?.ok === false ? ERROR_RATIO : NORMAL_RATIO;
+    return { width: w, height: Math.round(w * ratio) };
+  }, [config.taskbar_strip, settingsOpen, status?.ok, settingsContentHeight]);
   const rawAutoMaxScale = Math.min(viewportSize.width / baseSize.width, viewportSize.height / baseSize.height);
-  const contentScale = Number.isFinite(rawAutoMaxScale) && rawAutoMaxScale > 0
-    ? Math.max(0.1, rawAutoMaxScale)
-    : 1;
+  // Settings page never scales content by height (fixed scale 1) so dragging
+  // the height does not shrink/zoom the text. Non-settings uses min(w,h) scale.
+  const contentScale = settingsOpen
+    ? 1
+    : (Number.isFinite(rawAutoMaxScale) && rawAutoMaxScale > 0 ? Math.max(0.1, rawAutoMaxScale) : 1);
   const resizeWindowToBase = useCallback(async (size: WindowBaseSize) => {
     const width = Math.max(1, Math.ceil(size.width));
     const height = Math.max(1, Math.ceil(size.height));
@@ -296,6 +314,8 @@ export default function App() {
       .finally(() => setConfigReady(true));
   }, []);
 
+  useEffect(() => { settingsOpenRef.current = settingsOpen; }, [settingsOpen]);
+
   useEffect(() => {
     const onResize = () => {
       const vp = getViewportSize();
@@ -305,6 +325,11 @@ export default function App() {
         // does not reset it back to the default width.
         userResizedRef.current = true;
         preservedWidthRef.current = vp.width;
+        // In settings mode, also remember the user's chosen height so the
+        // program does not fight the user by re-stretching to content height.
+        if (settingsOpenRef.current) {
+          userSettingsHeightRef.current = vp.height;
+        }
       }
     };
     window.addEventListener('resize', onResize);
@@ -317,9 +342,9 @@ export default function App() {
     };
   }, []);
 
-  // Show/hide + always-on-top. Runs only after config is loaded so the backend
-  // start_hidden hide is not immediately undone. start_hidden hides once on
-  // startup; afterwards we don't auto-show from this effect (tray/codex handle it).
+  // Show/hide + always-on-top. start_hidden only hides when launched by the OS
+  // autostart entry (backend `should_start_hidden` checks the --autostart arg);
+  // a manual launch always shows the window.
   useEffect(() => {
     if (!configReady) return;
     const win = getCurrentWindow();
@@ -327,11 +352,17 @@ export default function App() {
     win.setAlwaysOnTop(wantTop).catch(() => undefined);
     if (!startupDoneRef.current) {
       startupDoneRef.current = true;
-      if (config.start_hidden) {
-        skipAutoShowRef.current = true;
-        win.hide().catch(() => undefined);
-        return;
-      }
+      invoke<boolean>('should_start_hidden')
+        .then((hidden) => {
+          if (hidden) {
+            skipAutoShowRef.current = true;
+            win.hide().catch(() => undefined);
+          } else {
+            win.show().catch(() => undefined);
+          }
+        })
+        .catch(() => win.show().catch(() => undefined));
+      return;
     }
     if (skipAutoShowRef.current) {
       return;
@@ -341,7 +372,7 @@ export default function App() {
     } else {
       win.hide().catch(() => undefined);
     }
-  }, [configReady, config.always_on_top, config.show_floating_window, config.taskbar_strip, config.start_hidden]);
+  }, [configReady, config.always_on_top, config.show_floating_window, config.taskbar_strip]);
 
   // Taskbar strip keep-alive: reassert always-on-top every 2s so the strip is
   // not occluded by the real Windows taskbar. Only in strip mode; never forces
@@ -397,6 +428,25 @@ export default function App() {
     lastBaseKeyRef.current = baseKey;
     void resizeWindowToBase(baseSize);
   }, [baseSize, config.taskbar_strip, configReady, resizeWindowToBase, settingsOpen, status?.ok]);
+
+  // Measure settings panel content height so the window auto-fits to show all
+  // settings without a scrollbar. When settings close, clear the measured
+  // height + user height so the normal non-settings height/ratio is restored
+  // cleanly (prevents the close-settings scale/height drift bug).
+  useEffect(() => {
+    if (!settingsOpen) {
+      setSettingsContentHeight(0);
+      userSettingsHeightRef.current = 0;
+      return;
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      const panel = settingsPanelRef.current;
+      if (!panel) return;
+      const h = Math.ceil(panel.scrollHeight || panel.offsetHeight || 0);
+      if (h > 0) setSettingsContentHeight(h);
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [settingsOpen, config, status]);
 
   useEffect(() => {
     refresh();
@@ -455,6 +505,7 @@ export default function App() {
           { id: 'refresh', text: t('menuRefresh'), action: () => void refresh() },
           { id: 'settings', text: settingsOpen ? t('menuCloseSettings') : t('menuSettings'), action: () => { if (settingsOpen) closeSettingsNow(); else openSettings(); } },
           { id: 'strip', text: config.taskbar_strip ? t('menuStripOff') : t('menuStripOn'), action: () => toggleStripMode() },
+          { id: 'hideTray', text: t('menuHideTray'), action: () => { void getCurrentWindow().hide(); } },
           { id: 'quit', text: t('menuQuit'), action: () => void invoke('exit_app') },
         ],
       });
@@ -513,6 +564,7 @@ export default function App() {
                 saveConfig={saveConfig}
                 onClose={closeSettings}
                 lang={lang}
+                panelRef={settingsPanelRef}
               />
             </section>
           )}
@@ -547,6 +599,7 @@ export default function App() {
               saveConfig={saveConfig}
               onClose={closeSettings}
               lang={lang}
+              panelRef={settingsPanelRef}
             />
           ) : !status ? (
             <div className="message drag-zone" onMouseDown={(event) => startWindowDrag(event)}>{t('loading')}</div>
@@ -577,11 +630,13 @@ function SettingsPanel({
   saveConfig,
   onClose,
   lang,
+  panelRef,
 }: {
   config: MeterConfig;
   saveConfig: (next: MeterConfig) => Promise<void>;
   onClose: () => void;
   lang: Language;
+  panelRef: RefObject<HTMLDivElement | null>;
 }) {
   const t = useMemo<TFunc>(() => (key: string) => tr(lang, key), [lang]);
   const [autostartEnabled, setAutostartEnabled] = useState(false);
@@ -635,7 +690,7 @@ function SettingsPanel({
   }, [config, saveConfig]);
 
   return (
-    <div className="settings">
+    <div className="settings" ref={panelRef}>
       <label>
         {t('refreshInterval')}
         <select

@@ -232,6 +232,17 @@ fn mark_manual_show(manual_show: tauri::State<'_, ManualShow>) {
     manual_show.store(true, Ordering::SeqCst);
 }
 
+/// Returns true only when this process was launched by the OS autostart entry
+/// (the `--autostart` arg is present) AND the user enabled start_hidden. A
+/// manual launch (desktop shortcut, start menu, exe double-click) has no
+/// `--autostart` arg, so this returns false and the window shows normally.
+#[tauri::command]
+fn should_start_hidden(app: AppHandle) -> bool {
+    let cfg = load_config_inner(&app);
+    let autostart_launch = std::env::args().any(|a| a == "--autostart");
+    cfg.start_hidden && autostart_launch
+}
+
 // --- Tray menu localization ---
 fn tray_labels(lang: &str) -> (&'static str, &'static str, &'static str, &'static str, &'static str) {
     match lang {
@@ -325,7 +336,10 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
-            None,
+            // Pass --autostart so the launched process can tell it was started
+            // by the OS autostart entry (vs. a manual user launch). This is how
+            // `should_start_hidden` distinguishes the two.
+            Some(vec!["--autostart"]),
         ))
         .manage(manual_show)
         .setup(move |app| {
@@ -416,12 +430,10 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Start hidden to tray: hide the main window on launch when enabled.
-            if cfg.start_hidden {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.hide();
-                }
-            }
+            // start_hidden is handled by the frontend via the `should_start_hidden`
+            // command, which only returns true when the process was launched by
+            // the OS autostart entry (--autostart arg) AND start_hidden is on.
+            // A manual launch (desktop/start-menu/exe) never hides.
 
             // Codex process watcher.
             // - Detects real user Codex (excludes our own app-server child).
@@ -504,7 +516,8 @@ pub fn run() {
             set_autostart,
             get_autostart_enabled,
             rebuild_tray_menu,
-            mark_manual_show
+            mark_manual_show,
+            should_start_hidden
         ])
         .run(tauri::generate_context!())
         .expect("LX Codex Meter failed to start");
