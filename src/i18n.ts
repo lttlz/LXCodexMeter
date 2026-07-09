@@ -93,7 +93,7 @@ const en: Dict = {
   strip5h: '5h',
   stripWeek: 'Wk',
   stripReset: 'Reset',
-  stripVoucher: 'Voucher',
+  stripVoucher: 'Vch',
   stripData: 'Data',
   stripCredits: 'Credits',
 
