@@ -1,7 +1,13 @@
 mod meter;
 
 use meter::{parse_client_usage_text, read_status, CodexMeterStatus, MeterConfig};
-use std::{fs, path::PathBuf, process::Command, time::Duration};
+use std::{
+    fs,
+    path::PathBuf,
+    process::Command,
+    sync::{atomic::{AtomicBool, Ordering}, Arc},
+    time::Duration,
+};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -9,6 +15,11 @@ use tauri::{
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_updater::UpdaterExt;
+
+/// Shared flag: set when the user manually shows/main-tains the window after
+/// Codex has closed. While true, the Codex watcher must not auto-hide. Reset to
+/// false on the next Codex false->true transition (new cycle).
+type ManualShow = Arc<AtomicBool>;
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
@@ -150,12 +161,33 @@ fn get_autostart_enabled(app: AppHandle) -> Result<bool, String> {
         .map_err(|e| format!("读取开机启动状态失败：{e}"))
 }
 
-// --- Codex process detection (name only; never reads Codex files/sessions/tokens) ---
+// --- Codex process detection ---
+// Detects whether a *user* Codex is running by enumerating codex.exe processes
+// via CIM Win32_Process and EXCLUDING any whose command line contains
+// `app-server` or `--stdio` (those are LXCodexMeter's own data-source child).
+// Never reads Codex files, sessions, tokens, or credentials. PowerShell runs
+// with CREATE_NO_WINDOW; any failure degrades silently (returns false).
 #[cfg(windows)]
 fn codex_running() -> bool {
     use std::os::windows::process::CommandExt;
-    let mut cmd = Command::new("tasklist");
-    cmd.args(["/FI", "IMAGENAME eq codex.exe", "/NH"])
+    // Single quotes for PS string literals; filter uses double quotes for the
+    // WQL filter. CommandLine may be null for some processes (treated as
+    // "unknown command line" -> counted, which is safe because LXCodexMeter's
+    // own app-server child always has a readable command line containing
+    // app-server).
+    let script = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+$ps = Get-CimInstance Win32_Process -Filter "Name='codex.exe'"
+$c = 0
+foreach ($x in $ps) {
+  $cl = $x.CommandLine
+  if (-not $cl) { $c = $c + 1; continue }
+  if (($cl -notmatch 'app-server') -and ($cl -notmatch '--stdio')) { $c = $c + 1 }
+}
+$c
+"#;
+    let mut cmd = Command::new("powershell");
+    cmd.args(["-NoProfile", "-NonInteractive", "-Command", script])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null());
@@ -165,13 +197,39 @@ fn codex_running() -> bool {
         Ok(o) => o,
         Err(_) => return false, // silent degrade
     };
-    let text = String::from_utf8_lossy(&out.stdout).to_ascii_lowercase();
-    text.contains("codex.exe")
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    text.parse::<u32>().map(|n| n > 0).unwrap_or(false)
 }
 
 #[cfg(not(windows))]
 fn codex_running() -> bool {
     false
+}
+
+// Show the window WITHOUT stealing focus (Windows SW_SHOWNOACTIVATE). Used by
+// the Codex auto-show so it never interrupts the user's current input. Manual
+// shows (tray/menu) still use the normal show()+set_focus().
+#[cfg(windows)]
+fn show_window_no_activate(app: &AppHandle) {
+    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
+    if let Some(w) = app.get_webview_window("main") {
+        if let Ok(hwnd) = w.hwnd() {
+            unsafe {
+                let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn show_window_no_activate(_app: &AppHandle) {}
+
+/// Called from the frontend whenever the user manually opens/focuses the window
+/// (settings button, context menu, tray-driven open). Marks that the watcher
+/// must not auto-hide afterwards (until the next Codex cycle).
+#[tauri::command]
+fn mark_manual_show(manual_show: tauri::State<'_, ManualShow>) {
+    manual_show.store(true, Ordering::SeqCst);
 }
 
 // --- Tray menu localization ---
@@ -215,9 +273,6 @@ fn rebuild_tray_menu(app: AppHandle, lang: String) -> Result<(), String> {
 }
 
 // --- Updater ---
-/// Check for an available update. Returns `Some(version)` when a newer release
-/// is available, otherwise `None`. Does not cache the Update object; the
-/// download-and-install command re-checks to keep state simple and stable.
 #[tauri::command]
 async fn check_for_updates(app: AppHandle) -> Result<Option<String>, String> {
     let updater = app
@@ -230,10 +285,6 @@ async fn check_for_updates(app: AppHandle) -> Result<Option<String>, String> {
     }
 }
 
-/// Download and install the latest update. Re-checks the manifest (does not
-/// rely on a cached Update), then downloads and installs. Emits
-/// `updater-progress` (downloaded, total) while downloading and
-/// `updater-installed` when the installer has finished.
 #[tauri::command]
 async fn download_and_install_update(app: AppHandle) -> Result<(), String> {
     let updater = app
@@ -267,13 +318,17 @@ fn restart_app(app: AppHandle) {
 }
 
 pub fn run() {
+    let manual_show: ManualShow = Arc::new(AtomicBool::new(false));
+    let manual_show_for_setup = manual_show.clone();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             None,
         ))
-        .setup(|app| {
+        .manage(manual_show)
+        .setup(move |app| {
             let cfg = load_config_inner(&app.handle());
             let lang = cfg.language.clone();
 
@@ -284,16 +339,22 @@ pub fn run() {
                 .cloned()
                 .ok_or("failed to load default tray icon")?;
 
+            let ms_menu = manual_show_for_setup.clone();
+            let ms_tray = manual_show_for_setup.clone();
+            let ms_watcher = manual_show_for_setup.clone();
+
             TrayIconBuilder::with_id("main")
                 .tooltip("LX Codex Meter")
                 .icon(tray_icon)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id().as_ref() {
+                .on_menu_event(move |app, event| match event.id().as_ref() {
                     "refresh" => {
                         let _ = app.emit("meter-refresh-requested", ());
                     }
                     "settings" => {
+                        // user-initiated show -> mark manual
+                        ms_menu.store(true, Ordering::SeqCst);
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
@@ -301,6 +362,7 @@ pub fn run() {
                         let _ = app.emit("meter-settings-requested", ());
                     }
                     "toggle_strip" => {
+                        ms_menu.store(true, Ordering::SeqCst);
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
@@ -314,6 +376,8 @@ pub fn run() {
                                     let _ = window.hide();
                                 }
                                 Ok(false) => {
+                                    // user chose to show -> manual
+                                    ms_menu.store(true, Ordering::SeqCst);
                                     let _ = window.show();
                                     let _ = window.set_focus();
                                 }
@@ -326,7 +390,7 @@ pub fn run() {
                     }
                     _ => {}
                 })
-                .on_tray_icon_event(|tray, event| {
+                .on_tray_icon_event(move |tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
@@ -340,6 +404,8 @@ pub fn run() {
                                     let _ = window.hide();
                                 }
                                 Ok(false) => {
+                                    // user left-click to show -> manual
+                                    ms_tray.store(true, Ordering::SeqCst);
                                     let _ = window.show();
                                     let _ = window.set_focus();
                                 }
@@ -351,44 +417,63 @@ pub fn run() {
                 .build(app)?;
 
             // Start hidden to tray: hide the main window on launch when enabled.
-            // The frontend show/hide effect has a one-shot guard so it does not
-            // re-show the window on first mount.
             if cfg.start_hidden {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.hide();
                 }
             }
 
-            // Codex process watcher: only detects whether codex.exe is running.
-            // Never reads Codex files, sessions, or credentials. tasklist
-            // failures degrade silently (no error, no crash).
+            // Codex process watcher.
+            // - Detects real user Codex (excludes our own app-server child).
+            // - auto-show uses SW_SHOWNOACTIVATE (no focus steal).
+            // - auto-hide fires at most ONCE per true->false transition, and
+            //   is suppressed if the user manually showed the window after the
+            //   close (manual_show flag), until the next Codex cycle.
+            // - Closing requires 2 consecutive false readings (debounce) so a
+            //   short-lived app-server child doesn't trigger a hide/show flicker.
             let codex_handle = app.handle().clone();
             std::thread::spawn(move || {
-                let mut prev = codex_running();
+                let mut prev = false;
+                let mut close_confirm = 0u32;
+                let mut auto_hidden_this_cycle = false;
                 loop {
                     std::thread::sleep(Duration::from_secs(4));
                     let c = load_config_inner(&codex_handle);
                     if !c.auto_show_on_codex && !c.auto_hide_on_codex_close {
-                        prev = false;
                         continue;
                     }
                     let cur = codex_running();
-                    if cur && !prev && c.auto_show_on_codex {
-                        if let Some(window) = codex_handle.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                    if cur {
+                        close_confirm = 0;
+                        if !prev {
+                            // false -> true: new cycle, reset manual flag + allow one hide
+                            ms_watcher.store(false, Ordering::SeqCst);
+                            auto_hidden_this_cycle = false;
+                            if c.auto_show_on_codex {
+                                show_window_no_activate(&codex_handle);
+                            }
                         }
-                    } else if !cur && prev && c.auto_hide_on_codex_close {
-                        if let Some(window) = codex_handle.get_webview_window("main") {
-                            let _ = window.hide();
+                        prev = true;
+                    } else {
+                        close_confirm = close_confirm.saturating_add(1);
+                        if close_confirm >= 2 && prev {
+                            // confirmed true -> false
+                            if c.auto_hide_on_codex_close
+                                && !ms_watcher.load(Ordering::SeqCst)
+                                && !auto_hidden_this_cycle
+                            {
+                                if let Some(window) = codex_handle.get_webview_window("main") {
+                                    let _ = window.hide();
+                                }
+                                auto_hidden_this_cycle = true;
+                            }
+                            prev = false;
                         }
                     }
-                    prev = cur;
                 }
             });
 
             // Background update check shortly after startup (non-blocking, silent).
-            // Only contacts the official GitHub/Gitee endpoints configured in tauri.conf.json.
             let updater_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(6)).await;
@@ -418,7 +503,8 @@ pub fn run() {
             restart_app,
             set_autostart,
             get_autostart_enabled,
-            rebuild_tray_menu
+            rebuild_tray_menu,
+            mark_manual_show
         ])
         .run(tauri::generate_context!())
         .expect("LX Codex Meter failed to start");

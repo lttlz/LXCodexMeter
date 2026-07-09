@@ -238,6 +238,8 @@ export default function App() {
   }, []);
 
   const openSettings = useCallback(() => {
+    // User-initiated open: tell the backend watcher not to auto-hide afterwards.
+    void invoke('mark_manual_show').catch(() => undefined);
     setSettingsOpen(true);
     window.setTimeout(() => {
       void getCurrentWindow().show();
