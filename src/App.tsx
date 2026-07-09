@@ -5,15 +5,18 @@ import { listen } from '@tauri-apps/api/event';
 import { LogicalSize } from '@tauri-apps/api/dpi';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Menu } from '@tauri-apps/api/menu';
-import type { CodexMeterStatus, LimitWindow, MeterConfig } from './types';
+import type { CodexMeterStatus, Language, LimitWindow, MeterConfig } from './types';
+import { tr } from './i18n';
 import donationQr from './assets/support/donation-qr.png';
 import wechatQr from './assets/support/wechat-qr.png';
+import logoImg from './assets/logo.png';
 
 const APP_NAME = 'LX Codex Meter';
-const APP_VERSION = '0.6.13';
+const APP_VERSION = '0.6.14';
 const APP_AUTHOR = 'lttlz';
 const GITHUB_URL = 'https://github.com/lttlz/LXCodexMeter';
 const GITEE_URL = 'https://gitee.com/lttlz/LXCodexMeter';
+const GITHUB_RELEASES = 'https://github.com/lttlz/LXCodexMeter/releases';
 
 type WindowBaseSize = {
   width: number;
@@ -31,6 +34,11 @@ const DEFAULT_CONFIG: MeterConfig = {
   show_reset_time: true,
   auto_update: false,
   source_mode: 'app_server',
+  autostart: false,
+  start_hidden: false,
+  auto_show_on_codex: false,
+  auto_hide_on_codex_close: false,
+  language: 'zh',
 };
 
 function clamp(n: number, min: number, max: number): number {
@@ -66,7 +74,12 @@ function getViewportSize(): WindowBaseSize {
   };
 }
 
-function formatReset(seconds: number | null, text?: string | null, dateMode: 'auto' | 'date' | 'time' = 'auto'): string {
+function formatReset(
+  seconds: number | null,
+  text?: string | null,
+  dateMode: 'auto' | 'date' | 'time' = 'auto',
+  unknown = '未知',
+): string {
   if (seconds) {
     try {
       const date = new Date(seconds * 1000);
@@ -86,15 +99,16 @@ function formatReset(seconds: number | null, text?: string | null, dateMode: 'au
     }
   }
   if (text) return text;
-  return '未知';
+  return unknown;
 }
 
+// Data time: default HH:mm (no seconds). Empty string when not refreshed.
 function formatUpdated(ms: number): string {
-  if (!ms) return '未刷新';
+  if (!ms) return '';
   try {
-    return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   } catch {
-    return '未刷新';
+    return '';
   }
 }
 
@@ -106,23 +120,27 @@ function pct(n: number | null): string {
 function limitTitle(limit: LimitWindow | null, fallback: string): string {
   if (!limit) return fallback;
   const mins = limit.window_duration_mins;
-  if (mins === 300) return '5小时';
-  if (mins === 10080) return '周额度';
-  if (mins === 60) return '1小时';
-  if (mins === 15) return '15分钟';
-  if (mins && mins > 60 && mins < 1440) return `${Math.round(mins / 60)}小时`;
-  if (mins && mins >= 1440) return `${Math.round(mins / 1440)}天`;
+  if (mins === 300) return '5h';
+  if (mins === 10080) return fallback;
+  if (mins === 60) return '1h';
+  if (mins === 15) return '15m';
+  if (mins && mins > 60 && mins < 1440) return `${Math.round(mins / 60)}h`;
+  if (mins && mins >= 1440) return `${Math.round(mins / 1440)}d`;
   return limit.label || fallback;
 }
+
+type TFunc = (key: string) => string;
 
 function LimitRow({
   limit,
   fallback,
   resetDateMode = 'auto',
+  t,
 }: {
   limit: LimitWindow | null;
   fallback: string;
   resetDateMode?: 'auto' | 'date' | 'time';
+  t: TFunc;
 }) {
   const remaining = limit?.remaining_percent ?? null;
   const used = limit?.used_percent ?? null;
@@ -130,7 +148,7 @@ function LimitRow({
     <div className="row">
       <span className="label">{limitTitle(limit, fallback)}</span>
       <span className="value">{pct(remaining)}</span>
-      <span className="sub">用 {pct(used)} · 重置 {formatReset(limit?.resets_at ?? null, limit?.reset_text, resetDateMode)}</span>
+      <span className="sub">{t('used')} {pct(used)} · {t('resetLabel')} {formatReset(limit?.resets_at ?? null, limit?.reset_text, resetDateMode, t('unknown'))}</span>
     </div>
   );
 }
@@ -173,6 +191,11 @@ export default function App() {
   const programmaticResizeTimerRef = useRef<number | undefined>(undefined);
   const lastBaseKeyRef = useRef('');
   const stripLinesRef = useRef<HTMLDivElement | null>(null);
+  const startupDoneRef = useRef(false);
+  const skipAutoShowRef = useRef(false);
+
+  const lang = config.language;
+  const t = useMemo<TFunc>(() => (key: string) => tr(lang, key), [lang]);
 
   const baseSize = useMemo(
     () => getBaseWindowSize(config.taskbar_strip, settingsOpen, status?.ok, stripContentWidth),
@@ -206,6 +229,8 @@ export default function App() {
   }, []);
 
   const openSettings = useCallback(() => {
+    // User-initiated open: tell the backend watcher not to auto-hide afterwards.
+    void invoke('mark_manual_show').catch(() => undefined);
     setSettingsOpen(true);
     window.setTimeout(() => {
       void getCurrentWindow().show();
@@ -251,6 +276,11 @@ export default function App() {
         merged.ui_scale = clamp(Number(merged.ui_scale || 1), 0.75, 1.5);
         merged.show_reset_time = typeof merged.show_reset_time === 'boolean' ? merged.show_reset_time : true;
         merged.auto_update = typeof merged.auto_update === 'boolean' ? merged.auto_update : false;
+        merged.autostart = typeof merged.autostart === 'boolean' ? merged.autostart : false;
+        merged.start_hidden = typeof merged.start_hidden === 'boolean' ? merged.start_hidden : false;
+        merged.auto_show_on_codex = typeof merged.auto_show_on_codex === 'boolean' ? merged.auto_show_on_codex : false;
+        merged.auto_hide_on_codex_close = typeof merged.auto_hide_on_codex_close === 'boolean' ? merged.auto_hide_on_codex_close : false;
+        merged.language = merged.language === 'en' ? 'en' : 'zh';
         setConfig(merged);
       })
       .catch(() => setConfig(DEFAULT_CONFIG))
@@ -271,16 +301,37 @@ export default function App() {
     };
   }, []);
 
+  // Show/hide + always-on-top. start_hidden only hides when launched by the OS
+  // autostart entry (backend `should_start_hidden` checks the --autostart arg);
+  // a manual launch always shows the window.
   useEffect(() => {
+    if (!configReady) return;
     const win = getCurrentWindow();
     const wantTop = config.taskbar_strip || config.always_on_top;
     win.setAlwaysOnTop(wantTop).catch(() => undefined);
+    if (!startupDoneRef.current) {
+      startupDoneRef.current = true;
+      invoke<boolean>('should_start_hidden')
+        .then((hidden) => {
+          if (hidden) {
+            skipAutoShowRef.current = true;
+            win.hide().catch(() => undefined);
+          } else {
+            win.show().catch(() => undefined);
+          }
+        })
+        .catch(() => win.show().catch(() => undefined));
+      return;
+    }
+    if (skipAutoShowRef.current) {
+      return;
+    }
     if (config.show_floating_window) {
       win.show().catch(() => undefined);
     } else {
       win.hide().catch(() => undefined);
     }
-  }, [config.always_on_top, config.show_floating_window, config.taskbar_strip]);
+  }, [configReady, config.always_on_top, config.show_floating_window, config.taskbar_strip]);
 
   // Taskbar strip keep-alive: reassert always-on-top every few seconds so the
   // pseudo taskbar strip is not occluded by the real Windows taskbar or other
@@ -297,6 +348,31 @@ export default function App() {
         .catch(() => undefined);
     }, 4000);
     return () => window.clearInterval(id);
+  }, [config.taskbar_strip]);
+
+  // Re-assert topmost after losing focus (e.g. user clicks the Windows taskbar):
+  // the taskbar can briefly cover the strip; this pushes the strip back on top.
+  // Only in strip mode; only setAlwaysOnTop(true), never show() or set_focus().
+  useEffect(() => {
+    if (!config.taskbar_strip) return;
+    const win = getCurrentWindow();
+    let timer: number | undefined;
+    const unlistenP = win.onFocusChanged(({ payload: focused }) => {
+      if (!focused) {
+        if (timer) window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          win.isVisible()
+            .then((v) => {
+              if (v) win.setAlwaysOnTop(true).catch(() => undefined);
+            })
+            .catch(() => undefined);
+        }, 150);
+      }
+    });
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      unlistenP.then((u) => u()).catch(() => undefined);
+    };
   }, [config.taskbar_strip]);
 
   // Re-assert topmost right after the settings panel toggles, because resizing
@@ -385,10 +461,11 @@ export default function App() {
     try {
       const menu = await Menu.new({
         items: [
-          { id: 'refresh', text: '刷新', action: () => void refresh() },
-          { id: 'settings', text: settingsOpen ? '关闭设置' : '设置', action: () => { if (settingsOpen) closeSettingsNow(); else openSettings(); } },
-          { id: 'strip', text: config.taskbar_strip ? '切回默认悬浮窗' : '切换任务栏条模式', action: () => toggleStripMode() },
-          { id: 'quit', text: '退出', action: () => void invoke('exit_app') },
+          { id: 'refresh', text: t('menuRefresh'), action: () => void refresh() },
+          { id: 'settings', text: settingsOpen ? t('menuCloseSettings') : t('menuSettings'), action: () => { if (settingsOpen) closeSettingsNow(); else openSettings(); } },
+          { id: 'strip', text: config.taskbar_strip ? t('menuStripOff') : t('menuStripOn'), action: () => toggleStripMode() },
+          { id: 'hideTray', text: t('menuHideTray'), action: () => { void getCurrentWindow().hide(); } },
+          { id: 'quit', text: t('menuQuit'), action: () => void invoke('exit_app') },
         ],
       });
       await menu.popup(undefined, getCurrentWindow());
@@ -396,7 +473,7 @@ export default function App() {
       // Fallback: if native popup is blocked by permissions/runtime, open settings instead of showing a clipped web menu.
       setSettingsOpen(true);
     }
-  }, [config.taskbar_strip, refresh, settingsOpen, toggleStripMode, openSettings, closeSettingsNow]);
+  }, [config.taskbar_strip, refresh, settingsOpen, toggleStripMode, openSettings, closeSettingsNow, t]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -428,13 +505,13 @@ export default function App() {
             <div className="strip-drag" onMouseDown={(event) => startWindowDrag(event)}>
               <div className="strip-lines" ref={stripLinesRef}>
                 <div>
-                  <b>5h</b>: {pct(status?.primary?.remaining_percent ?? null)} <span>周</span>: {pct(status?.secondary?.remaining_percent ?? null)}
-                  {config.show_reset_time && <span>刷新</span>}
-                  {config.show_reset_time && `: ${formatUpdated(status?.updated_at_ms ?? 0)}`}
+                  <b>{t('strip5h')}</b>: {pct(status?.primary?.remaining_percent ?? null)} <span>{t('stripWeek')}</span>: {pct(status?.secondary?.remaining_percent ?? null)} <span>{t('stripVoucher')}</span>: {status?.reset_credits_available ?? 0}
+                  {config.show_reset_time && <span>{t('stripData')}</span>}
+                  {config.show_reset_time && `: ${formatUpdated(status?.updated_at_ms ?? 0) || '--'}`}
                 </div>
                 <div>
-                  <b>重置</b>: {formatReset(status?.primary?.resets_at ?? null, status?.primary?.reset_text, 'auto')} <span>周</span>: {formatReset(status?.secondary?.resets_at ?? null, status?.secondary?.reset_text, 'date')}
-                  {config.show_reset_time && <span>Credits</span>}
+                  <b>{t('stripReset')}</b>: {formatReset(status?.primary?.resets_at ?? null, status?.primary?.reset_text, 'auto', t('unknown'))} <span>{t('stripWeek')}</span>: {formatReset(status?.secondary?.resets_at ?? null, status?.secondary?.reset_text, 'date', t('unknown'))}
+                  {config.show_reset_time && <span>{t('stripCredits')}</span>}
                   {config.show_reset_time && `: ${status?.credit_balance ?? '--'}`}
                 </div>
               </div>
@@ -446,6 +523,7 @@ export default function App() {
                 config={config}
                 saveConfig={saveConfig}
                 onClose={closeSettings}
+                lang={lang}
               />
             </section>
           )}
@@ -464,13 +542,13 @@ export default function App() {
         <section className="panel">
           <header className="titlebar" onMouseDown={(event) => startWindowDrag(event)}>
             <div className="title-drag" onMouseDown={(event) => startWindowDrag(event)}>
-              <div className="name">LX Codex Meter</div>
+              <div className="name">{APP_NAME}</div>
             </div>
             <div className="title-spacer-drag" />
             <div className="actions" onMouseDown={stopDragEvent} onPointerDown={stopDragEvent}>
-              <ActionButton title="刷新" onClick={() => refresh()} disabled={loading}>{loading ? '…' : '↻'}</ActionButton>
-              <ActionButton title="切换任务栏条模式" onClick={toggleStripMode}>▭</ActionButton>
-              <ActionButton title="设置" onClick={toggleSettings}>⚙</ActionButton>
+              <ActionButton title={t('titleRefresh')} onClick={() => refresh()} disabled={loading}>{loading ? '…' : '↻'}</ActionButton>
+              <ActionButton title={t('titleStrip')} onClick={toggleStripMode}>▭</ActionButton>
+              <ActionButton title={t('titleSettings')} onClick={toggleSettings}>⚙</ActionButton>
             </div>
           </header>
 
@@ -479,22 +557,23 @@ export default function App() {
               config={config}
               saveConfig={saveConfig}
               onClose={closeSettings}
+              lang={lang}
             />
           ) : !status ? (
-            <div className="message drag-zone" onMouseDown={(event) => startWindowDrag(event)}>正在读取 Codex 额度…</div>
+            <div className="message drag-zone" onMouseDown={(event) => startWindowDrag(event)}>{t('loading')}</div>
           ) : status.ok ? (
             <div className="content drag-zone" onMouseDown={(event) => startWindowDrag(event)}>
-              <LimitRow limit={status.primary} fallback="主额度" resetDateMode="auto" />
-              <LimitRow limit={status.secondary} fallback="副额度" resetDateMode="date" />
+              <LimitRow limit={status.primary} fallback={t('primary')} resetDateMode="auto" t={t} />
+              <LimitRow limit={status.secondary} fallback={t('secondary')} resetDateMode="date" t={t} />
               <div className="row">
-                <span className="label">Credits</span>
+                <span className="label">{t('credits')}</span>
                 <span className="value">{status.credit_balance ?? '--'}</span>
                 <span className="sub" />
               </div>
-              <div className="footer">重置券 {status.reset_credits_available ?? 0} · 刷新 {formatUpdated(status.updated_at_ms)}</div>
+              <div className="footer">{t('resetCredits')} {status.reset_credits_available ?? 0} · {t('data')} {formatUpdated(status.updated_at_ms) || '--'}</div>
             </div>
           ) : (
-            <div className="message error drag-zone" onMouseDown={(event) => startWindowDrag(event)}>{status.message || '读取失败'}</div>
+            <div className="message error drag-zone" onMouseDown={(event) => startWindowDrag(event)}>{status.message || t('failed')}</div>
           )}
         </section>
       </div>
@@ -502,52 +581,86 @@ export default function App() {
   );
 }
 
+type UpdateState = 'idle' | 'checking' | 'upToDate' | 'available' | 'downloading' | 'installed' | 'failed';
+
 function SettingsPanel({
   config,
   saveConfig,
   onClose,
+  lang,
 }: {
   config: MeterConfig;
   saveConfig: (next: MeterConfig) => Promise<void>;
   onClose: () => void;
+  lang: Language;
 }) {
-  const [updateStatus, setUpdateStatus] = useState('');
-  const [updateChecking, setUpdateChecking] = useState(false);
+  const t = useMemo<TFunc>(() => (key: string) => tr(lang, key), [lang]);
+  const [autostartEnabled, setAutostartEnabled] = useState(false);
+  const [updateState, setUpdateState] = useState<UpdateState>('idle');
+  const [updateVersion, setUpdateVersion] = useState('');
+
+  useEffect(() => {
+    invoke<boolean>('get_autostart_enabled')
+      .then(setAutostartEnabled)
+      .catch(() => undefined);
+  }, []);
 
   const runUpdateCheck = useCallback(async () => {
-    if (updateChecking) return;
-    setUpdateChecking(true);
-    setUpdateStatus('正在检查更新...');
+    setUpdateState('checking');
     try {
       const result = await invoke<string | null>('check_for_updates');
       if (result) {
-        setUpdateStatus(`发现新版本：v${result}，请前往发布页下载更新`);
+        setUpdateVersion(result);
+        setUpdateState('available');
       } else {
-        setUpdateStatus('当前已是最新版本');
+        setUpdateState('upToDate');
       }
     } catch {
-      setUpdateStatus('检查更新失败，请稍后重试');
-    } finally {
-      setUpdateChecking(false);
+      setUpdateState('failed');
     }
-  }, [updateChecking]);
+  }, []);
+
+  const downloadInstall = useCallback(async () => {
+    setUpdateState('downloading');
+    try {
+      await invoke('download_and_install_update');
+      setUpdateState('installed');
+    } catch {
+      setUpdateState('failed');
+    }
+  }, []);
+
+  const onAutostartChange = useCallback(async (checked: boolean) => {
+    setAutostartEnabled(checked);
+    try {
+      await invoke('set_autostart', { enabled: checked });
+      void saveConfig({ ...config, autostart: checked, source_mode: 'app_server' });
+    } catch {
+      setAutostartEnabled(!checked);
+    }
+  }, [config, saveConfig]);
+
+  const onLanguageChange = useCallback((next: Language) => {
+    void saveConfig({ ...config, language: next, source_mode: 'app_server' });
+    void invoke('rebuild_tray_menu', { lang: next }).catch(() => undefined);
+  }, [config, saveConfig]);
 
   return (
     <div className="settings">
       <label>
-        刷新间隔
+        {t('refreshInterval')}
         <select
           value={config.refresh_interval_secs}
           onChange={(e) => saveConfig({ ...config, refresh_interval_secs: Number(e.target.value), source_mode: 'app_server' })}
         >
-          <option value={60}>1 分钟</option>
-          <option value={180}>3 分钟</option>
-          <option value={300}>5 分钟</option>
-          <option value={600}>10 分钟</option>
+          <option value={60}>1 {t('minute')}</option>
+          <option value={180}>3 {t('minute')}</option>
+          <option value={300}>5 {t('minute')}</option>
+          <option value={600}>10 {t('minute')}</option>
         </select>
       </label>
       <label>
-        透明度
+        {t('opacity')}
         <input
           type="range"
           min="0.55"
@@ -563,7 +676,7 @@ function SettingsPanel({
           checked={config.always_on_top}
           onChange={(e) => saveConfig({ ...config, always_on_top: e.target.checked, source_mode: 'app_server' })}
         />
-        置顶显示
+        {t('alwaysOnTop')}
       </label>
       <label className="check">
         <input
@@ -571,7 +684,39 @@ function SettingsPanel({
           checked={config.taskbar_strip}
           onChange={(e) => saveConfig({ ...config, taskbar_strip: e.target.checked, source_mode: 'app_server' })}
         />
-        任务栏条模式，伪嵌入
+        {t('taskbarStrip')}
+      </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={autostartEnabled}
+          onChange={(e) => onAutostartChange(e.target.checked)}
+        />
+        {t('autostart')}
+      </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={config.start_hidden}
+          onChange={(e) => saveConfig({ ...config, start_hidden: e.target.checked, source_mode: 'app_server' })}
+        />
+        {t('startHidden')}
+      </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={config.auto_show_on_codex}
+          onChange={(e) => saveConfig({ ...config, auto_show_on_codex: e.target.checked, source_mode: 'app_server' })}
+        />
+        {t('autoShowCodex')}
+      </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={config.auto_hide_on_codex_close}
+          onChange={(e) => saveConfig({ ...config, auto_hide_on_codex_close: e.target.checked, source_mode: 'app_server' })}
+        />
+        {t('autoHideCodex')}
       </label>
       <label className="check">
         <input
@@ -579,52 +724,84 @@ function SettingsPanel({
           checked={config.auto_update}
           onChange={(e) => saveConfig({ ...config, auto_update: e.target.checked, source_mode: 'app_server' })}
         />
-        自动更新
+        {t('autoUpdate')}
       </label>
       <div className="update-check-row">
         <button
           className="settings-button"
           type="button"
           onClick={() => void runUpdateCheck()}
-          disabled={updateChecking}
+          disabled={updateState === 'checking' || updateState === 'downloading'}
         >
-          {updateChecking ? '正在检查...' : '立即检查更新'}
+          {updateState === 'checking' ? t('checking') : t('checkUpdate')}
         </button>
-        {updateStatus && <span className="update-status">{updateStatus}</span>}
+        <span className="update-status">
+          {updateState === 'upToDate' && t('updateUpToDate')}
+          {updateState === 'available' && `${t('updateFound')}：v${updateVersion}`}
+          {updateState === 'downloading' && t('updatingDownload')}
+          {updateState === 'installed' && t('updateDone')}
+          {updateState === 'failed' && t('updateFailed')}
+        </span>
       </div>
+      {updateState === 'available' && (
+        <button className="settings-button" type="button" onClick={() => void downloadInstall()}>
+          {t('downloadInstall')}
+        </button>
+      )}
+      {updateState === 'installed' && (
+        <button className="settings-button" type="button" onClick={() => void invoke('restart_app')}>
+          {t('restart')}
+        </button>
+      )}
+      {updateState === 'failed' && (
+        <button className="settings-button" type="button" onClick={() => void invoke('open_project_url', { url: GITHUB_RELEASES })}>
+          {t('releasePage')}
+        </button>
+      )}
       <label className="check">
         <input
           type="checkbox"
           checked={config.show_reset_time}
           onChange={(e) => saveConfig({ ...config, show_reset_time: e.target.checked, source_mode: 'app_server' })}
         />
-        显示 Credits / 刷新
+        {t('showCreditsData')}
+      </label>
+      <label>
+        {t('language')}
+        <select
+          value={config.language}
+          onChange={(e) => onLanguageChange(e.target.value as Language)}
+        >
+          <option value="zh">{t('langZh')}</option>
+          <option value="en">{t('langEn')}</option>
+        </select>
       </label>
       {config.taskbar_strip && (
         <button className="settings-button" type="button" onClick={() => saveConfig({ ...config, taskbar_strip: false, source_mode: 'app_server' })}>
-          切回默认悬浮窗
+          {t('backToFloat')}
         </button>
       )}
       <button className="settings-button secondary" type="button" onClick={onClose}>
-        关闭设置
+        {t('closeSettings')}
       </button>
       <div className="about">
+        <img className="about-logo" src={logoImg} alt="LX Codex Meter" />
         <div><strong>{APP_NAME}</strong> <span>v{APP_VERSION}</span></div>
-        <div>作者：{APP_AUTHOR}</div>
+        <div>{t('author')}：{APP_AUTHOR}</div>
         <div>GitHub: <a href={GITHUB_URL} onClick={(e) => { e.preventDefault(); void invoke('open_project_url', { url: GITHUB_URL }).catch(() => undefined); }}>{GITHUB_URL}</a></div>
         <div>Gitee: <a href={GITEE_URL} onClick={(e) => { e.preventDefault(); void invoke('open_project_url', { url: GITEE_URL }).catch(() => undefined); }}>{GITEE_URL}</a></div>
       </div>
       <div className="support-section">
-        <div className="support-title">支持与联系</div>
-        <p className="support-desc">本软件完全免费开放全部功能，无付费限制、无强制打赏。若您觉得工具实用，可自愿小额赞赏支持后续维护更新，支持与否不影响任何使用权限。</p>
+        <div className="support-title">{t('supportTitle')}</div>
+        <p className="support-desc">{t('supportDesc')}</p>
         <div className="support-qrs">
           <div className="qr-item">
-            <img src={donationQr} alt="赞赏码" />
-            <span>自愿赞赏</span>
+            <img src={donationQr} alt={t('donation')} />
+            <span>{t('donation')}</span>
           </div>
           <div className="qr-item">
-            <img src={wechatQr} alt="加好友" />
-            <span>添加好友</span>
+            <img src={wechatQr} alt={t('addFriend')} />
+            <span>{t('addFriend')}</span>
           </div>
         </div>
       </div>

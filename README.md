@@ -22,6 +22,12 @@ LX Codex Meter 是一个本地 Windows 桌面小工具，用于通过 Codex App 
 - GitHub / Gitee 项目链接
 - Windows 安装包
 - 应用内自动更新（Tauri Updater，签名校验）
+- 开机自启动（可选启动后隐藏到托盘）
+- Codex / ChatGPT 运行时自动显示窗口
+- Codex / ChatGPT 关闭后自动隐藏到托盘
+- 中英文界面切换
+- 右键菜单隐藏到托盘
+- NSIS 安装包中英文语言选择
 
 ### 隐私说明
 
@@ -42,13 +48,13 @@ LX Codex Meter：
 推荐安装包：
 
 ```
-LX Codex Meter_0.6.13_x64-setup.exe
+LX Codex Meter_0.6.14_x64-setup.exe
 ```
 
 备用安装包：
 
 ```
-LX Codex Meter_0.6.13_x64_en-US.msi
+LX Codex Meter_0.6.14_x64_en-US.msi
 ```
 
 ### 下载地址
@@ -82,6 +88,12 @@ LX Codex Meter is a local Windows desktop utility for displaying Codex usage lim
 - GitHub / Gitee project links
 - Windows installer packages
 - In-app automatic updates (Tauri Updater, signature verified)
+- Optional autostart with start-hidden-to-tray
+- Auto-show window when Codex / ChatGPT is running
+- Auto-hide to tray when Codex / ChatGPT closes
+- Chinese / English UI switch
+- Right-click menu hide-to-tray
+- NSIS installer Chinese / English language selector
 
 ### Privacy
 
@@ -94,13 +106,13 @@ The automatic update feature only contacts the official GitHub / Gitee release e
 Recommended installer:
 
 ```
-LX Codex Meter_0.6.13_x64-setup.exe
+LX Codex Meter_0.6.14_x64-setup.exe
 ```
 
 Alternative installer:
 
 ```
-LX Codex Meter_0.6.13_x64_en-US.msi
+LX Codex Meter_0.6.14_x64_en-US.msi
 ```
 
 ### Downloads

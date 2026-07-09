@@ -1,4 +1,5 @@
 export type SourceMode = 'app_server' | 'auto' | 'client_window' | 'client_watch';
+export type Language = 'zh' | 'en';
 
 export type LimitWindow = {
   label: string;
@@ -35,4 +36,9 @@ export type MeterConfig = {
   show_reset_time: boolean;
   auto_update: boolean;
   source_mode: SourceMode;
+  autostart: boolean;
+  start_hidden: boolean;
+  auto_show_on_codex: boolean;
+  auto_hide_on_codex_close: boolean;
+  language: Language;
 };

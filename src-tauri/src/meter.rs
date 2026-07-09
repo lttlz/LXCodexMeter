@@ -24,6 +24,11 @@ fn default_ui_scale() -> f64 { 1.0 }
 fn default_taskbar_strip() -> bool { false }
 fn default_show_reset_time() -> bool { true }
 fn default_auto_update() -> bool { false }
+fn default_autostart() -> bool { false }
+fn default_start_hidden() -> bool { false }
+fn default_auto_show_on_codex() -> bool { false }
+fn default_auto_hide_on_codex_close() -> bool { false }
+fn default_language() -> String { "zh".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MeterConfig {
@@ -48,6 +53,19 @@ pub struct MeterConfig {
     /// app_server | auto | client_window | client_watch
     #[serde(default = "default_source_mode")]
     pub source_mode: String,
+    /// User intent for Windows autostart. The OS registry is the source of
+    /// truth; this field mirrors the user's last choice for UI init only.
+    #[serde(default = "default_autostart")]
+    pub autostart: bool,
+    #[serde(default = "default_start_hidden")]
+    pub start_hidden: bool,
+    #[serde(default = "default_auto_show_on_codex")]
+    pub auto_show_on_codex: bool,
+    #[serde(default = "default_auto_hide_on_codex_close")]
+    pub auto_hide_on_codex_close: bool,
+    /// zh | en
+    #[serde(default = "default_language")]
+    pub language: String,
 }
 
 impl Default for MeterConfig {
@@ -63,6 +81,11 @@ impl Default for MeterConfig {
             show_reset_time: default_show_reset_time(),
             auto_update: default_auto_update(),
             source_mode: default_source_mode(),
+            autostart: default_autostart(),
+            start_hidden: default_start_hidden(),
+            auto_show_on_codex: default_auto_show_on_codex(),
+            auto_hide_on_codex_close: default_auto_hide_on_codex_close(),
+            language: default_language(),
         }
     }
 }
