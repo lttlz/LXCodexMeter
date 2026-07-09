@@ -23,6 +23,7 @@ $forbidden = @(
 
 $allowFiles = @(
   "README.md",
+  "RELEASE_BODY.md",
   "AGENTS.md",
   "scripts\security-audit.ps1"
 )
@@ -31,7 +32,7 @@ $files = Get-ChildItem -Path $root -Recurse -File | Where-Object {
   $_.FullName -notmatch "node_modules" -and
   $_.FullName -notmatch "target" -and
   $_.FullName -notmatch "dist" -and
-  $_.Extension -notin @(".png", ".ico", ".zip")
+  $_.Extension -notin @(".png", ".ico", ".zip", ".lock")
 }
 
 $hits = @()

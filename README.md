@@ -14,13 +14,19 @@ LX Codex Meter 是一个本地 Windows 桌面小工具，用于通过 Codex App 
 - 显示 5 小时额度、5 小时重置时间
 - 显示周额度、周额度重置时间
 - 显示 Credits 信息（如接口可用）
-- 显示当前数据刷新时间
+- 显示重置券数量
+- 显示当前数据时间
 - 默认悬浮窗
 - 任务栏条模式
 - 系统托盘菜单
 - 设置页
+- 可选开机自动启动
+- 可选启动后隐藏到托盘
+- 可选 Codex 运行时自动显示 / 关闭后自动隐藏到托盘
+- 软件内中文 / 英文切换
+- 检查更新后可一键下载并安装
 - GitHub / Gitee 项目链接
-- Windows 安装包
+- Windows 安装包（NSIS 支持中文 / 英文）
 - 应用内自动更新（Tauri Updater，签名校验）
 
 ### 隐私说明
@@ -42,13 +48,13 @@ LX Codex Meter：
 推荐安装包：
 
 ```
-LX Codex Meter_0.6.13_x64-setup.exe
+LX Codex Meter_0.6.14_x64-setup.exe
 ```
 
 备用安装包：
 
 ```
-LX Codex Meter_0.6.13_x64_en-US.msi
+LX Codex Meter_0.6.14_x64_en-US.msi
 ```
 
 ### 下载地址
@@ -58,7 +64,7 @@ LX Codex Meter_0.6.13_x64_en-US.msi
 
 ### 自动更新
 
-应用启动后会自动检查更新（仅连接官方发布源）。当有新版本时，会通过应用内通知提示。更新包经过签名校验，确保完整性。
+应用启动后会自动检查更新（仅连接官方发布源）。当有新版本时，可在设置页点击“下载并安装”一键完成更新。更新包经过签名校验，确保完整性。
 
 ---
 
@@ -74,13 +80,19 @@ LX Codex Meter is a local Windows desktop utility for displaying Codex usage lim
 - Displays 5-hour usage and 5-hour reset time
 - Displays weekly usage and weekly reset time
 - Displays Credits information when available
-- Displays current data refresh time
+- Displays reset voucher count
+- Displays current data time
 - Compact floating window
 - Taskbar strip mode
 - System tray menu
 - Settings page
+- Optional launch on system startup
+- Optional start hidden to tray
+- Optional auto-show when Codex is running / auto-hide when Codex closes
+- In-app Chinese / English language switching
+- One-click download and install after checking for updates
 - GitHub / Gitee project links
-- Windows installer packages
+- Windows installer packages (NSIS supports Chinese / English)
 - In-app automatic updates (Tauri Updater, signature verified)
 
 ### Privacy
@@ -94,13 +106,13 @@ The automatic update feature only contacts the official GitHub / Gitee release e
 Recommended installer:
 
 ```
-LX Codex Meter_0.6.13_x64-setup.exe
+LX Codex Meter_0.6.14_x64-setup.exe
 ```
 
 Alternative installer:
 
 ```
-LX Codex Meter_0.6.13_x64_en-US.msi
+LX Codex Meter_0.6.14_x64_en-US.msi
 ```
 
 ### Downloads
@@ -110,4 +122,4 @@ LX Codex Meter_0.6.13_x64_en-US.msi
 
 ### Automatic Updates
 
-The app checks for updates automatically on startup (official release endpoints only). When a newer version is available, an in-app notification is shown. Update packages are signature-verified for integrity.
+The app checks for updates automatically on startup (official release endpoints only). When a newer version is available, you can click "Download and install" in the settings page to update in one click. Update packages are signature-verified for integrity.

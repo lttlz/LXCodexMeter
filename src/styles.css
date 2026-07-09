@@ -183,6 +183,13 @@ button { -webkit-app-region: no-drag; }
 .about span { color: rgba(238,244,255,0.52); }
 .about a { color: rgba(155,190,255,0.9); text-decoration: none; }
 .about a:hover { text-decoration: underline; }
+.about-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
 
 .strip { color: #f4f7ff; }
 .strip-panel {
