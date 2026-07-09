@@ -215,29 +215,24 @@ export default function App() {
   const baseSize = useMemo(() => {
     const w = userResizedRef.current ? preservedWidthRef.current : DEFAULT_W;
     if (settingsOpen) {
-      // Settings content scales by window width (content grows with the window,
-      // like the normal floating window). Base layout width is DEFAULT_W (215);
-      // contentScale = vpW / 215. Height follows the scaled content height so all
+      // Settings page: height = measured content height (+padding) so all
       // content shows without a scrollbar by default. If the user has manually
-      // dragged the height, honor that height (scrollbar appears then). Height
-      // changes never change contentScale, so dragging height never shrinks text.
-      const scale = viewportSize.width / DEFAULT_W;
-      const measured = settingsContentHeight > 0 ? settingsContentHeight + 24 : Math.round(DEFAULT_W * SETTINGS_RATIO);
-      const scaledContentHeight = Math.round(measured * scale);
+      // dragged the height, honor that height instead (scrollbar appears then).
+      const measured = settingsContentHeight > 0 ? settingsContentHeight + 24 : 0;
       const h = userSettingsHeightRef.current > 0
         ? userSettingsHeightRef.current
-        : scaledContentHeight;
-      return { width: viewportSize.width, height: Math.max(220, h) };
+        : (measured > 0 ? measured : Math.round(w * SETTINGS_RATIO));
+      return { width: w, height: Math.max(220, h) };
     }
     if (config.taskbar_strip) return { width: w, height: 34 };
     const ratio = status?.ok === false ? ERROR_RATIO : NORMAL_RATIO;
     return { width: w, height: Math.round(w * ratio) };
-  }, [config.taskbar_strip, settingsOpen, status?.ok, settingsContentHeight, viewportSize.width]);
+  }, [config.taskbar_strip, settingsOpen, status?.ok, settingsContentHeight]);
   const rawAutoMaxScale = Math.min(viewportSize.width / baseSize.width, viewportSize.height / baseSize.height);
-  // Settings page scales by window width only (height never shrinks text).
-  // Non-settings uses min(w,h) so content fits the window.
+  // Settings page never scales content by height (fixed scale 1) so dragging
+  // the height does not shrink/zoom the text. Non-settings uses min(w,h) scale.
   const contentScale = settingsOpen
-    ? viewportSize.width / DEFAULT_W
+    ? 1
     : (Number.isFinite(rawAutoMaxScale) && rawAutoMaxScale > 0 ? Math.max(0.1, rawAutoMaxScale) : 1);
   const resizeWindowToBase = useCallback(async (size: WindowBaseSize) => {
     const width = Math.max(1, Math.ceil(size.width));
@@ -533,13 +528,8 @@ export default function App() {
 
   const meterStyle = {
     opacity: config.opacity,
-    // In settings mode the base layout is DEFAULT_W (215) wide and the measured
-    // content height tall; contentScale (= vpW/215) grows it to fill the window.
-    // In non-settings mode the base equals the window base size directly.
-    ['--base-width' as string]: settingsOpen ? `${DEFAULT_W}px` : `${baseSize.width}px`,
-    ['--base-height' as string]: settingsOpen
-      ? `${(settingsContentHeight > 0 ? settingsContentHeight + 24 : Math.round(DEFAULT_W * SETTINGS_RATIO))}px`
-      : `${baseSize.height}px`,
+    ['--base-width' as string]: `${baseSize.width}px`,
+    ['--base-height' as string]: `${baseSize.height}px`,
     ['--content-scale' as string]: contentScale,
   } as CSSProperties;
 
