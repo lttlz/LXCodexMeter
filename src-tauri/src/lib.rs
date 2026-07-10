@@ -163,51 +163,55 @@ fn get_autostart_enabled(app: AppHandle) -> Result<bool, String> {
 
 // --- Codex / ChatGPT process detection ---
 // Detects whether a *user* Codex/ChatGPT is running by enumerating processes
-// via CIM Win32_Process. Rules:
+// through sysinfo. Rules:
 //   1. ChatGPT.exe exists -> user is running ChatGPT/Codex entry -> running
 //   2. codex.exe / Codex.exe exists AND CommandLine does NOT contain
 //      `app-server` or `--stdio` -> real user Codex -> running
 //   3. codex.exe with `app-server` / `--stdio` in CommandLine is LXCodexMeter's
 //      own data-source child -> EXCLUDED, does not count.
-// Never reads Codex files, sessions, tokens, or credentials. PowerShell runs
-// with CREATE_NO_WINDOW; any failure degrades silently (returns false).
+// Never reads Codex files, sessions, tokens, or credentials. Command lines are
+// used only for this in-memory classification and are never logged or emitted.
 #[cfg(windows)]
-fn codex_running() -> bool {
-    use std::os::windows::process::CommandExt;
-    // WQL Name comparison is case-insensitive on Windows, so 'codex.exe'
-    // matches both codex.exe and Codex.exe. ChatGPT.exe is checked separately.
-    let script = r#"
-$ErrorActionPreference = 'SilentlyContinue'
-$c = 0
-# Rule 1: ChatGPT.exe — any instance means the user is running ChatGPT/Codex.
-$cg = @(Get-CimInstance Win32_Process -Filter "Name='ChatGPT.exe'")
-$c = $c + $cg.Count
-# Rule 2: codex.exe — exclude our own app-server --stdio child.
-$ps = Get-CimInstance Win32_Process -Filter "Name='codex.exe'"
-foreach ($x in $ps) {
-  $cl = $x.CommandLine
-  if (-not $cl) { $c = $c + 1; continue }
-  if (($cl -notmatch 'app-server') -and ($cl -notmatch '--stdio')) { $c = $c + 1 }
-}
-$c
-"#;
-    let mut cmd = Command::new("powershell");
-    cmd.args(["-NoProfile", "-NonInteractive", "-Command", script])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
-    // CREATE_NO_WINDOW: never flash a console.
-    cmd.creation_flags(0x08000000);
-    let out = match cmd.output() {
-        Ok(o) => o,
-        Err(_) => return false, // silent degrade
-    };
-    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    text.parse::<u32>().map(|n| n > 0).unwrap_or(false)
+fn codex_running(system: &mut sysinfo::System) -> bool {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, UpdateKind};
+
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing()
+            .without_tasks()
+            .with_cmd(UpdateKind::Always),
+    );
+
+    for process in system.processes().values() {
+        let name = process.name().to_string_lossy().to_ascii_lowercase();
+
+        if name == "chatgpt.exe" {
+            return true;
+        }
+
+        if name == "codex.exe" {
+            let command_line = process.cmd();
+            if command_line.is_empty() {
+                return true;
+            }
+
+            let is_meter_data_source = command_line.iter().any(|argument| {
+                let argument = argument.to_string_lossy().to_ascii_lowercase();
+                argument.contains("app-server") || argument.contains("--stdio")
+            });
+
+            if !is_meter_data_source {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 #[cfg(not(windows))]
-fn codex_running() -> bool {
+fn codex_running(_system: &mut sysinfo::System) -> bool {
     false
 }
 
@@ -230,8 +234,8 @@ fn show_window_no_activate(app: &AppHandle) {
 fn show_window_no_activate(_app: &AppHandle) {}
 
 /// Called from the frontend whenever the user manually opens/focuses the window
-/// (settings button, context menu, tray-driven open). Marks that the watcher
-/// must not auto-hide afterwards (until the next Codex cycle).
+/// (settings button, context menu, tray-driven open). The watcher resets this
+/// marker on the next Codex cycle; it does not suppress a confirmed close.
 #[tauri::command]
 fn mark_manual_show(manual_show: tauri::State<'_, ManualShow>) {
     manual_show.store(true, Ordering::SeqCst);
@@ -444,8 +448,7 @@ pub fn run() {
             // - Detects real user Codex/ChatGPT (excludes our own app-server child).
             // - auto-show uses SW_SHOWNOACTIVATE (no focus steal).
             // - auto-hide fires at most ONCE per true->false transition, and
-            //   is suppressed if the user manually showed the window after the
-            //   close (manual_show flag), until the next Codex cycle.
+            //   is not blocked by manual tray/settings interactions.
             // - Closing requires 2 consecutive false readings (debounce) so a
             //   short-lived app-server child doesn't trigger a hide/show flicker.
             let codex_handle = app.handle().clone();
@@ -453,15 +456,25 @@ pub fn run() {
                 let mut prev = false;
                 let mut close_confirm = 0u32;
                 let mut auto_hidden_this_cycle = false;
+                let mut sleep_next = Duration::from_secs(4);
+                let mut process_system = sysinfo::System::new();
+
                 loop {
-                    std::thread::sleep(Duration::from_secs(4));
+                    std::thread::sleep(sleep_next);
                     let c = load_config_inner(&codex_handle);
                     if !c.auto_show_on_codex && !c.auto_hide_on_codex_close {
+                        prev = false;
+                        close_confirm = 0;
+                        auto_hidden_this_cycle = false;
+                        sleep_next = Duration::from_secs(4);
                         continue;
                     }
-                    let cur = codex_running();
+
+                    let cur = codex_running(&mut process_system);
                     if cur {
                         close_confirm = 0;
+                        sleep_next = Duration::from_secs(1);
+
                         if !prev {
                             // false -> true: new cycle, reset manual flag + allow one hide
                             ms_watcher.store(false, Ordering::SeqCst);
@@ -471,21 +484,25 @@ pub fn run() {
                             }
                         }
                         prev = true;
-                    } else {
+                    } else if prev {
                         close_confirm = close_confirm.saturating_add(1);
-                        if close_confirm >= 2 && prev {
+                        sleep_next = Duration::from_millis(500);
+
+                        if close_confirm >= 2 {
                             // confirmed true -> false
-                            if c.auto_hide_on_codex_close
-                                && !ms_watcher.load(Ordering::SeqCst)
-                                && !auto_hidden_this_cycle
-                            {
+                            if c.auto_hide_on_codex_close && !auto_hidden_this_cycle {
                                 if let Some(window) = codex_handle.get_webview_window("main") {
                                     let _ = window.hide();
                                 }
                                 auto_hidden_this_cycle = true;
                             }
                             prev = false;
+                            close_confirm = 0;
+                            sleep_next = Duration::from_secs(4);
                         }
+                    } else {
+                        close_confirm = 0;
+                        sleep_next = Duration::from_secs(4);
                     }
                 }
             });
