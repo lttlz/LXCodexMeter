@@ -63,7 +63,7 @@ function getBaseWindowSize(
   return {
     width: open ? 215 : 215,
     // Same reason as strip: 470 was too short once the support QRs landed.
-    height: open ? 660 : statusOk === false ? 150 : 178,
+    height: open ? 660 : statusOk === false ? 150 : 142,
   };
 }
 

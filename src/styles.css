@@ -92,17 +92,17 @@ button { -webkit-app-region: no-drag; }
 .actions button:hover,
 .strip-actions button:hover { background: rgba(255, 255, 255, 0.12); }
 
-.content { flex: 1 1 auto; min-height: 0; padding: 0 6px 8px 6px; }
+.content { flex: 1 1 auto; min-height: 0; padding: 0 6px 3px 6px; }
 .drag-zone { cursor: move; }
 .row {
   display: grid;
-  grid-template-columns: 36px 40px 1fr;
+  grid-template-columns: 34px 36px minmax(0, 1fr);
   align-items: baseline;
-  gap: 8px;
+  column-gap: 5px;
   padding: 4px 0;
   border-top: 1px solid rgba(255,255,255,0.06);
 }
-.label { color: rgba(238, 244, 255, 0.72); font-size: 12px; }
+.label { color: rgba(238, 244, 255, 0.72); font-size: 12px; white-space: nowrap; }
 .value { font-size: 13px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
 .sub { font-size: 10px; font-variant-numeric: tabular-nums; color: rgba(238, 244, 255, 0.52); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .footer { margin-top: 3px; font-variant-numeric: tabular-nums; font-size: 10px; color: rgba(238, 244, 255, 0.48); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
