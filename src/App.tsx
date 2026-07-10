@@ -587,6 +587,18 @@ export default function App() {
     void saveConfig({ ...config, taskbar_strip: !config.taskbar_strip, show_floating_window: true, source_mode: 'app_server' });
   }, [config, saveConfig]);
 
+  const hideToTray = useCallback(() => {
+    void invoke<boolean>('hide_to_tray')
+      .then((hidden) => {
+        if (!hidden) {
+          console.error('hide_to_tray completed but window is still visible');
+        }
+      })
+      .catch((error) => {
+        console.error('hide_to_tray failed', error);
+      });
+  }, []);
+
   const showNativeContextMenu = useCallback(async (event?: MouseEvent) => {
     event?.preventDefault();
     event?.stopPropagation();
@@ -596,7 +608,7 @@ export default function App() {
           { id: 'refresh', text: t('menuRefresh'), action: () => void refresh() },
           { id: 'settings', text: settingsOpen ? t('menuCloseSettings') : t('menuSettings'), action: () => { if (settingsOpen) closeSettingsNow(); else openSettings(); } },
           { id: 'strip', text: config.taskbar_strip ? t('menuStripOff') : t('menuStripOn'), action: () => toggleStripMode() },
-          { id: 'hideTray', text: t('menuHideTray'), action: () => { void getCurrentWindow().hide(); } },
+          { id: 'hideTray', text: t('menuHideTray'), action: hideToTray },
           { id: 'quit', text: t('menuQuit'), action: () => void invoke('exit_app') },
         ],
       });
@@ -605,7 +617,7 @@ export default function App() {
       // Fallback: if native popup is blocked by permissions/runtime, open settings instead of showing a clipped web menu.
       setSettingsOpen(true);
     }
-  }, [config.taskbar_strip, refresh, settingsOpen, toggleStripMode, openSettings, closeSettingsNow, t]);
+  }, [config.taskbar_strip, refresh, settingsOpen, toggleStripMode, hideToTray, openSettings, closeSettingsNow, t]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;

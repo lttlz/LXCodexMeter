@@ -77,6 +77,22 @@ fn exit_app(app: AppHandle) {
     app.exit(0);
 }
 
+#[tauri::command]
+fn hide_to_tray(app: AppHandle) -> Result<bool, String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+
+    window
+        .hide()
+        .map_err(|e| format!("failed to hide main window: {e}"))?;
+
+    window
+        .is_visible()
+        .map(|visible| !visible)
+        .map_err(|e| format!("failed to verify hidden state: {e}"))
+}
+
 // --- Strict URL whitelist (no query, no fragment, no arbitrary tag) ---
 const GITHUB_URL: &str = "https://github.com/lttlz/LXCodexMeter";
 const GITEE_URL: &str = "https://gitee.com/lttlz/LXCodexMeter";
@@ -531,6 +547,7 @@ pub fn run() {
             load_config,
             save_config,
             exit_app,
+            hide_to_tray,
             open_project_url,
             check_for_updates,
             download_and_install_update,
