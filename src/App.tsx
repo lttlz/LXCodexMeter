@@ -17,9 +17,14 @@ const APP_AUTHOR = 'lttlz';
 const GITHUB_URL = 'https://github.com/lttlz/LXCodexMeter';
 const GITEE_URL = 'https://gitee.com/lttlz/LXCodexMeter';
 const GITHUB_RELEASES = 'https://github.com/lttlz/LXCodexMeter/releases';
-const DEFAULT_WINDOW_WIDTH = 215;
+const FLOATING_LAYOUT_BASE_WIDTH = 215;
+const STRIP_LAYOUT_BASE_WIDTH = 292;
+const DEFAULT_WINDOW_WIDTH = FLOATING_LAYOUT_BASE_WIDTH;
 const MIN_WINDOW_WIDTH = 150;
 const DEFAULT_SETTINGS_HEIGHT = 660;
+const FLOATING_OK_LAYOUT_BASE_HEIGHT = 142;
+const FLOATING_ERROR_LAYOUT_BASE_HEIGHT = 150;
+const STRIP_LAYOUT_BASE_HEIGHT = 34;
 
 type WindowBaseSize = {
   width: number;
@@ -57,23 +62,38 @@ function getInitialUserWindowWidth(): number {
   return normalizeWindowWidth(Math.round(window.innerWidth || DEFAULT_WINDOW_WIDTH));
 }
 
-function getBaseWindowSize(
+function getLayoutBaseWidth(strip: boolean): number {
+  return strip ? STRIP_LAYOUT_BASE_WIDTH : FLOATING_LAYOUT_BASE_WIDTH;
+}
+
+function getLayoutBaseHeight(
   strip: boolean,
   open: boolean,
   statusOk: boolean | null | undefined,
-  userWindowWidth: number,
   settingsHeight: number | null,
+): number {
+  if (open) return settingsHeight ?? DEFAULT_SETTINGS_HEIGHT;
+  if (strip) return STRIP_LAYOUT_BASE_HEIGHT;
+  return statusOk === false ? FLOATING_ERROR_LAYOUT_BASE_HEIGHT : FLOATING_OK_LAYOUT_BASE_HEIGHT;
+}
+
+function getAvailableWindowHeight(): number {
+  const availableHeight = Math.round(window.screen?.availHeight || 0);
+  if (availableHeight <= 0) return Number.MAX_SAFE_INTEGER;
+  const top = Number.isFinite(window.screenY) ? Math.max(0, Math.round(window.screenY)) : 0;
+  return Math.max(1, availableHeight - top - 8);
+}
+
+function getTargetWindowSize(
+  userWindowWidth: number,
+  layoutBaseHeight: number,
+  contentScale: number,
+  maxHeight: number,
 ): WindowBaseSize {
-  const width = normalizeWindowWidth(userWindowWidth);
-  if (strip) {
-    return {
-      width,
-      height: open ? settingsHeight ?? DEFAULT_SETTINGS_HEIGHT : 34,
-    };
-  }
+  const targetHeight = Math.max(1, Math.ceil(layoutBaseHeight * contentScale));
   return {
-    width,
-    height: open ? settingsHeight ?? DEFAULT_SETTINGS_HEIGHT : statusOk === false ? 150 : 142,
+    width: normalizeWindowWidth(userWindowWidth),
+    height: Math.min(targetHeight, Math.max(1, maxHeight)),
   };
 }
 
@@ -214,14 +234,24 @@ export default function App() {
   const lang = config.language;
   const t = useMemo<TFunc>(() => (key: string) => tr(lang, key), [lang]);
 
-  const baseSize = useMemo(
-    () => getBaseWindowSize(config.taskbar_strip, settingsOpen, status?.ok, userWindowWidth, settingsContentHeight),
-    [config.taskbar_strip, settingsOpen, status?.ok, userWindowWidth, settingsContentHeight],
+  const layoutBaseWidth = getLayoutBaseWidth(config.taskbar_strip);
+  const layoutBaseHeight = getLayoutBaseHeight(
+    config.taskbar_strip,
+    settingsOpen,
+    status?.ok,
+    settingsContentHeight,
   );
-  const rawAutoMaxScale = Math.min(viewportSize.width / baseSize.width, viewportSize.height / baseSize.height);
-  const contentScale = Number.isFinite(rawAutoMaxScale) && rawAutoMaxScale > 0
-    ? Math.max(0.1, rawAutoMaxScale)
-    : 1;
+  const contentScale = clamp(userWindowWidth / layoutBaseWidth, 0.1, 10);
+  const targetWindowSize = getTargetWindowSize(
+    userWindowWidth,
+    layoutBaseHeight,
+    contentScale,
+    getAvailableWindowHeight(),
+  );
+  const contentViewportHeight = Math.max(
+    1,
+    Math.min(targetWindowSize.height, viewportSize.height) / contentScale,
+  );
   const resizeWindowToBase = useCallback(async (size: WindowBaseSize) => {
     const width = Math.max(1, Math.ceil(size.width));
     const height = Math.max(1, Math.ceil(size.height));
@@ -448,12 +478,12 @@ export default function App() {
 
   useEffect(() => {
     if (!configReady) return;
-    const baseKey = `${baseSize.width}x${baseSize.height}:${config.taskbar_strip}:${settingsOpen}:${status?.ok === false}`;
+    const baseKey = `${targetWindowSize.width}x${targetWindowSize.height}:${config.taskbar_strip}:${settingsOpen}:${status?.ok === false}`;
     if (lastBaseKeyRef.current === baseKey) return;
 
     lastBaseKeyRef.current = baseKey;
-    void resizeWindowToBase(baseSize);
-  }, [baseSize, config.taskbar_strip, configReady, resizeWindowToBase, settingsOpen, status?.ok]);
+    void resizeWindowToBase(targetWindowSize);
+  }, [config.taskbar_strip, configReady, resizeWindowToBase, settingsOpen, status?.ok, targetWindowSize]);
 
   useEffect(() => {
     refresh();
@@ -536,8 +566,9 @@ export default function App() {
 
   const meterStyle = {
     opacity: config.opacity,
-    ['--base-width' as string]: `${baseSize.width}px`,
-    ['--base-height' as string]: `${baseSize.height}px`,
+    ['--base-width' as string]: `${layoutBaseWidth}px`,
+    ['--base-height' as string]: `${layoutBaseHeight}px`,
+    ['--content-viewport-height' as string]: `${contentViewportHeight}px`,
     ['--content-scale' as string]: contentScale,
   } as CSSProperties;
 

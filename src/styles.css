@@ -32,9 +32,9 @@ button { -webkit-app-region: no-drag; }
 
 .meter-content {
   width: var(--base-width);
-  height: var(--base-height);
+  height: var(--content-viewport-height);
   min-width: var(--base-width);
-  min-height: var(--base-height);
+  min-height: 0;
   transform: scale(var(--content-scale));
   transform-origin: left top;
   display: flex;
@@ -53,7 +53,7 @@ button { -webkit-app-region: no-drag; }
   display: flex;
   flex-direction: column;
 }
-.meter.settings-open .panel { height: 100%; overflow: hidden; }
+.meter.settings-open .panel { height: 100%; overflow-x: hidden; overflow-y: auto; }
 
 .titlebar {
   display: flex;
@@ -222,7 +222,8 @@ button { -webkit-app-region: no-drag; }
   width: 100%;
   flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: transparent;
 }
 .strip-settings .settings { align-content: start; }
