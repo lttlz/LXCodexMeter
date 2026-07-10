@@ -246,11 +246,12 @@ export default function App() {
     settingsContentHeight,
   );
   const contentScale = clamp(userWindowWidth / layoutBaseWidth, 0.1, 10);
+  const maxHeight = settingsOpen ? getAvailableWindowHeight() : Number.MAX_SAFE_INTEGER;
   const targetWindowSize = getTargetWindowSize(
     userWindowWidth,
     layoutBaseHeight,
     contentScale,
-    getAvailableWindowHeight(),
+    maxHeight,
   );
   const contentViewportHeight = Math.max(
     1,
