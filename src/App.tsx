@@ -18,7 +18,7 @@ const GITHUB_URL = 'https://github.com/lttlz/LXCodexMeter';
 const GITEE_URL = 'https://gitee.com/lttlz/LXCodexMeter';
 const GITHUB_RELEASES = 'https://github.com/lttlz/LXCodexMeter/releases';
 const FLOATING_LAYOUT_BASE_WIDTH = 215;
-const STRIP_LAYOUT_BASE_WIDTH = 292;
+const STRIP_LAYOUT_BASE_WIDTH = 276;
 const DEFAULT_WINDOW_WIDTH = FLOATING_LAYOUT_BASE_WIDTH;
 const MIN_WINDOW_WIDTH = 150;
 const DEFAULT_SETTINGS_HEIGHT = 660;
@@ -132,11 +132,15 @@ function formatReset(
   return unknown;
 }
 
-// Data time: default HH:mm (no seconds). Empty string when not refreshed.
+// Data refresh time: HH:mm:ss. Empty string when not refreshed.
 function formatUpdated(ms: number): string {
   if (!ms) return '';
   try {
-    return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(ms).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
   } catch {
     return '';
   }
