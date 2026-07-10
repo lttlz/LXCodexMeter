@@ -38,3 +38,10 @@ workbuddy/memory/
 # Tauri updater signing private key (never commit)
 *.updater.key
 secrets/
+
+# Local secrets / key material (never commit)
+.local/
+*.pem
+*.key
+*private*key*
+*signing*key*
