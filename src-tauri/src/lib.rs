@@ -19,8 +19,27 @@ use tauri_plugin_updater::UpdaterExt;
 /// Shared flag: set when the user manually shows/maintains the window after
 /// Codex has closed. While true, the Codex watcher must not auto-hide. Reset to
 /// false on the next Codex false->true transition (new cycle).
-type ManualShow = Arc<AtomicBool>;
-type ManualHidden = Arc<AtomicBool>;
+#[derive(Clone)]
+struct ManualShow(Arc<AtomicBool>);
+
+impl ManualShow {
+    fn set(&self, value: bool) {
+        self.0.store(value, Ordering::SeqCst);
+    }
+}
+
+#[derive(Clone)]
+struct ManualHidden(Arc<AtomicBool>);
+
+impl ManualHidden {
+    fn set(&self, value: bool) {
+        self.0.store(value, Ordering::SeqCst);
+    }
+
+    fn get(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
@@ -83,15 +102,18 @@ fn hide_to_tray(
     app: AppHandle,
     manual_hidden: tauri::State<'_, ManualHidden>,
 ) -> Result<(), String> {
-    manual_hidden.store(true, Ordering::SeqCst);
-
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
 
-    window
-        .hide()
-        .map_err(|e| format!("failed to hide main window: {e}"))
+    manual_hidden.set(true);
+
+    if let Err(error) = window.hide() {
+        manual_hidden.set(false);
+        return Err(format!("failed to hide main window: {error}"));
+    }
+
+    Ok(())
 }
 
 // --- Strict URL whitelist (no query, no fragment, no arbitrary tag) ---
@@ -255,7 +277,7 @@ fn show_window_no_activate(_app: &AppHandle) {}
 /// marker on the next Codex cycle; it does not suppress a confirmed close.
 #[tauri::command]
 fn mark_manual_show(manual_show: tauri::State<'_, ManualShow>) {
-    manual_show.store(true, Ordering::SeqCst);
+    manual_show.set(true);
 }
 
 /// Returns true only when this process was launched by the OS autostart entry
@@ -355,9 +377,9 @@ fn restart_app(app: AppHandle) {
 }
 
 pub fn run() {
-    let manual_show: ManualShow = Arc::new(AtomicBool::new(false));
+    let manual_show = ManualShow(Arc::new(AtomicBool::new(false)));
     let manual_show_for_setup = manual_show.clone();
-    let manual_hidden: ManualHidden = Arc::new(AtomicBool::new(false));
+    let manual_hidden = ManualHidden(Arc::new(AtomicBool::new(false)));
     let manual_hidden_for_setup = manual_hidden.clone();
 
     tauri::Builder::default()
@@ -407,8 +429,8 @@ pub fn run() {
                     }
                     "settings" => {
                         // user-initiated show -> mark manual
-                        ms_menu.store(true, Ordering::SeqCst);
-                        mh_menu.store(false, Ordering::SeqCst);
+                        ms_menu.set(true);
+                        mh_menu.set(false);
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
@@ -416,8 +438,8 @@ pub fn run() {
                         let _ = app.emit("meter-settings-requested", ());
                     }
                     "toggle_strip" => {
-                        ms_menu.store(true, Ordering::SeqCst);
-                        mh_menu.store(false, Ordering::SeqCst);
+                        ms_menu.set(true);
+                        mh_menu.set(false);
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
@@ -428,13 +450,13 @@ pub fn run() {
                         if let Some(window) = app.get_webview_window("main") {
                             match window.is_visible() {
                                 Ok(true) => {
-                                    mh_menu.store(true, Ordering::SeqCst);
+                                    mh_menu.set(true);
                                     let _ = window.hide();
                                 }
                                 Ok(false) => {
                                     // user chose to show -> manual
-                                    ms_menu.store(true, Ordering::SeqCst);
-                                    mh_menu.store(false, Ordering::SeqCst);
+                                    ms_menu.set(true);
+                                    mh_menu.set(false);
                                     let _ = window.show();
                                     let _ = window.set_focus();
                                 }
@@ -458,13 +480,13 @@ pub fn run() {
                         if let Some(window) = app.get_webview_window("main") {
                             match window.is_visible() {
                                 Ok(true) => {
-                                    mh_tray.store(true, Ordering::SeqCst);
+                                    mh_tray.set(true);
                                     let _ = window.hide();
                                 }
                                 Ok(false) => {
                                     // user left-click to show -> manual
-                                    ms_tray.store(true, Ordering::SeqCst);
-                                    mh_tray.store(false, Ordering::SeqCst);
+                                    ms_tray.set(true);
+                                    mh_tray.set(false);
                                     let _ = window.show();
                                     let _ = window.set_focus();
                                 }
@@ -475,10 +497,10 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // start_hidden is handled by the frontend via the `should_start_hidden`
-            // command, which only returns true when the process was launched by
-            // the OS autostart entry (--autostart arg) AND start_hidden is on.
-            // A manual launch (desktop/start-menu/exe) never hides.
+            // start_hidden is handled early in backend setup, with the frontend
+            // `should_start_hidden` command kept as a fallback. Both paths only
+            // hide when launched by the OS autostart entry (--autostart arg) AND
+            // start_hidden is on. A manual launch never hides.
 
             // Codex/ChatGPT process watcher.
             // - Detects real user Codex/ChatGPT (excludes our own app-server child).
@@ -513,9 +535,9 @@ pub fn run() {
 
                         if !prev {
                             // false -> true: new cycle, reset manual flag + allow one hide
-                            ms_watcher.store(false, Ordering::SeqCst);
+                            ms_watcher.set(false);
                             auto_hidden_this_cycle = false;
-                            if c.auto_show_on_codex && !mh_watcher.load(Ordering::SeqCst) {
+                            if c.auto_show_on_codex && !mh_watcher.get() {
                                 show_window_no_activate(&codex_handle);
                             }
                         }
@@ -526,7 +548,7 @@ pub fn run() {
 
                         if close_confirm >= 2 {
                             // confirmed true -> false
-                            mh_watcher.store(false, Ordering::SeqCst);
+                            mh_watcher.set(false);
                             if c.auto_hide_on_codex_close && !auto_hidden_this_cycle {
                                 if let Some(window) = codex_handle.get_webview_window("main") {
                                     let _ = window.hide();
