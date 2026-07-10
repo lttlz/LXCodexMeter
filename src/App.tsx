@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, CSSProperties, MouseEvent, Ref, SyntheticEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { LogicalSize } from '@tauri-apps/api/dpi';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { LogicalPosition, LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi';
+import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { Menu } from '@tauri-apps/api/menu';
 import type { CodexMeterStatus, Language, LimitWindow, MeterConfig } from './types';
 import { tr } from './i18n';
@@ -25,6 +25,8 @@ const DEFAULT_SETTINGS_HEIGHT = 660;
 const FLOATING_OK_LAYOUT_BASE_HEIGHT = 142;
 const FLOATING_ERROR_LAYOUT_BASE_HEIGHT = 150;
 const STRIP_LAYOUT_BASE_HEIGHT = 30;
+const TASKBAR_SAFE_GAP = 4;
+const WINDOW_MOVE_DEBOUNCE_MS = 100;
 
 type WindowBaseSize = {
   width: number;
@@ -218,12 +220,13 @@ export default function App() {
   const [config, setConfig] = useState<MeterConfig>(DEFAULT_CONFIG);
   const [configReady, setConfigReady] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpenState] = useState(false);
   const [viewportSize, setViewportSize] = useState<WindowBaseSize>(() => getViewportSize());
   const [userWindowWidth, setUserWindowWidth] = useState(() => getInitialUserWindowWidth());
   const [settingsContentHeight, setSettingsContentHeight] = useState<number | null>(null);
   const programmaticResizeRef = useRef(false);
   const programmaticResizeTimerRef = useRef<number | undefined>(undefined);
+  const settingsOpenRef = useRef(settingsOpen);
   const lastBaseKeyRef = useRef('');
   const userWindowWidthRef = useRef<number | null>(null);
   const titlebarRef = useRef<HTMLElement | null>(null);
@@ -231,6 +234,10 @@ export default function App() {
   const settingsPanelRef = useRef<HTMLDivElement | null>(null);
   const startupDoneRef = useRef(false);
   const skipAutoShowRef = useRef(false);
+  const setSettingsOpen = useCallback((open: boolean) => {
+    settingsOpenRef.current = open;
+    setSettingsOpenState(open);
+  }, []);
   if (userWindowWidthRef.current === null) {
     userWindowWidthRef.current = userWindowWidth;
   }
@@ -257,6 +264,59 @@ export default function App() {
     1,
     Math.min(targetWindowSize.height, viewportSize.height) / contentScale,
   );
+
+  const clampNormalWindowAboveTaskbar = useCallback(async () => {
+    if (settingsOpenRef.current) return;
+
+    const win = getCurrentWindow();
+    const visible = await win.isVisible().catch(() => false);
+    if (!visible || settingsOpenRef.current) return;
+
+    try {
+      const [position, size, monitor] = await Promise.all([
+        win.outerPosition(),
+        win.outerSize(),
+        currentMonitor(),
+      ]);
+
+      if (settingsOpenRef.current) return;
+      if (monitor) {
+        const workAreaBottom = monitor.workArea.position.y + monitor.workArea.size.height;
+        const maxBottom = workAreaBottom - TASKBAR_SAFE_GAP;
+        const currentBottom = position.y + size.height;
+        if (currentBottom > maxBottom && !settingsOpenRef.current) {
+          await win
+            .setPosition(new PhysicalPosition(position.x, maxBottom - size.height))
+            .catch(() => undefined);
+        }
+        return;
+      }
+    } catch {
+      // Fall back to WebView screen coordinates when monitor information is unavailable.
+    }
+
+    if (settingsOpenRef.current) return;
+    const fallbackScreen = window.screen as Screen & { availTop?: number };
+    const availableTop = Math.round(fallbackScreen.availTop || 0);
+    const availableHeight = Math.round(fallbackScreen.availHeight || 0);
+    const currentX = Math.round(window.screenX);
+    const currentY = Math.round(window.screenY);
+    const windowHeight = Math.round(window.outerHeight || window.innerHeight || 0);
+    if (
+      availableHeight <= 0
+      || windowHeight <= 0
+      || !Number.isFinite(currentX)
+      || !Number.isFinite(currentY)
+    ) return;
+
+    const maxBottom = availableTop + availableHeight - TASKBAR_SAFE_GAP;
+    if (currentY + windowHeight > maxBottom && !settingsOpenRef.current) {
+      await win
+        .setPosition(new LogicalPosition(currentX, maxBottom - windowHeight))
+        .catch(() => undefined);
+    }
+  }, []);
+
   const resizeWindowToBase = useCallback(async (size: WindowBaseSize) => {
     const width = Math.max(1, Math.ceil(size.width));
     const height = Math.max(1, Math.ceil(size.height));
@@ -272,13 +332,14 @@ export default function App() {
 
     // Windows/WebView2 occasionally keeps one old transparent frame after shrinking.
     // Apply the same logical size once more after the webview has observed the new viewport.
-    programmaticResizeTimerRef.current = window.setTimeout(() => {
-      void win.setSize(new LogicalSize(width, height)).catch(() => undefined);
+    programmaticResizeTimerRef.current = window.setTimeout(async () => {
+      await win.setSize(new LogicalSize(width, height)).catch(() => undefined);
       setViewportSize(getViewportSize());
       programmaticResizeRef.current = false;
       programmaticResizeTimerRef.current = undefined;
+      await clampNormalWindowAboveTaskbar();
     }, 90);
-  }, []);
+  }, [clampNormalWindowAboveTaskbar]);
 
   const syncUserWindowWidth = useCallback((width: number) => {
     const nextWidth = normalizeWindowWidth(width, userWindowWidthRef.current ?? DEFAULT_WINDOW_WIDTH);
@@ -376,6 +437,33 @@ export default function App() {
   }, [syncUserWindowWidth]);
 
   useEffect(() => {
+    if (settingsOpen) return;
+
+    const win = getCurrentWindow();
+    let disposed = false;
+    let moveTimer: number | undefined;
+    let unlisten: (() => void) | undefined;
+
+    void win.onMoved(() => {
+      if (disposed || settingsOpenRef.current) return;
+      if (moveTimer !== undefined) window.clearTimeout(moveTimer);
+      moveTimer = window.setTimeout(() => {
+        moveTimer = undefined;
+        if (!disposed) void clampNormalWindowAboveTaskbar();
+      }, WINDOW_MOVE_DEBOUNCE_MS);
+    }).then((stop) => {
+      if (disposed) stop();
+      else unlisten = stop;
+    }).catch(() => undefined);
+
+    return () => {
+      disposed = true;
+      if (moveTimer !== undefined) window.clearTimeout(moveTimer);
+      unlisten?.();
+    };
+  }, [clampNormalWindowAboveTaskbar, settingsOpen]);
+
+  useEffect(() => {
     if (!settingsOpen) {
       setSettingsContentHeight(null);
       return undefined;
@@ -430,48 +518,6 @@ export default function App() {
       win.hide().catch(() => undefined);
     }
   }, [configReady, config.always_on_top, config.show_floating_window, config.taskbar_strip]);
-
-  // Taskbar strip keep-alive: reassert always-on-top every few seconds so the
-  // pseudo taskbar strip is not occluded by the real Windows taskbar or other
-  // topmost windows. Only runs in strip mode; never forces a hidden window
-  // back to visible and never steals focus.
-  useEffect(() => {
-    if (!config.taskbar_strip) return;
-    const win = getCurrentWindow();
-    const id = window.setInterval(() => {
-      win.isVisible()
-        .then((visible) => {
-          if (visible) win.setAlwaysOnTop(true).catch(() => undefined);
-        })
-        .catch(() => undefined);
-    }, 4000);
-    return () => window.clearInterval(id);
-  }, [config.taskbar_strip]);
-
-  // Re-assert topmost after losing focus (e.g. user clicks the Windows taskbar):
-  // the taskbar can briefly cover the strip; this pushes the strip back on top.
-  // Only in strip mode; only setAlwaysOnTop(true), never show() or set_focus().
-  useEffect(() => {
-    if (!config.taskbar_strip) return;
-    const win = getCurrentWindow();
-    let timer: number | undefined;
-    const unlistenP = win.onFocusChanged(({ payload: focused }) => {
-      if (!focused) {
-        if (timer) window.clearTimeout(timer);
-        timer = window.setTimeout(() => {
-          win.isVisible()
-            .then((v) => {
-              if (v) win.setAlwaysOnTop(true).catch(() => undefined);
-            })
-            .catch(() => undefined);
-        }, 150);
-      }
-    });
-    return () => {
-      if (timer) window.clearTimeout(timer);
-      unlistenP.then((u) => u()).catch(() => undefined);
-    };
-  }, [config.taskbar_strip]);
 
   // Re-assert topmost right after the settings panel toggles, because resizing
   // the window can occasionally drop the always-on-top flag on Windows.
