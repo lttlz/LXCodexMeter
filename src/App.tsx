@@ -18,13 +18,13 @@ const GITHUB_URL = 'https://github.com/lttlz/LXCodexMeter';
 const GITEE_URL = 'https://gitee.com/lttlz/LXCodexMeter';
 const GITHUB_RELEASES = 'https://github.com/lttlz/LXCodexMeter/releases';
 const FLOATING_LAYOUT_BASE_WIDTH = 215;
-const STRIP_LAYOUT_BASE_WIDTH = 238;
+const STRIP_LAYOUT_BASE_WIDTH = 246;
 const DEFAULT_WINDOW_WIDTH = FLOATING_LAYOUT_BASE_WIDTH;
 const MIN_WINDOW_WIDTH = 150;
 const DEFAULT_SETTINGS_HEIGHT = 660;
 const FLOATING_OK_LAYOUT_BASE_HEIGHT = 142;
 const FLOATING_ERROR_LAYOUT_BASE_HEIGHT = 150;
-const STRIP_LAYOUT_BASE_HEIGHT = 32;
+const STRIP_LAYOUT_BASE_HEIGHT = 30;
 
 type WindowBaseSize = {
   width: number;
