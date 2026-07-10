@@ -24,23 +24,44 @@ $forbidden = @(
 $allowFiles = @(
   "README.md",
   "AGENTS.md",
+  "RELEASE_BODY.md",
   "scripts\security-audit.ps1"
 )
 
-$files = Get-ChildItem -Path $root -Recurse -File | Where-Object {
-  $_.FullName -notmatch "node_modules" -and
-  $_.FullName -notmatch "target" -and
-  $_.FullName -notmatch "dist" -and
-  $_.Extension -notin @(".png", ".ico", ".zip")
+$excludePrefixes = @(
+  ".tmp-",
+  ".workbuddy/memory/",
+  "workbuddy/memory/",
+  "node_modules/",
+  "dist/",
+  "src-tauri/target/",
+  "src-tauri/gen/"
+)
+
+$excludeFiles = @(
+  "package-lock.json",
+  "src-tauri/Cargo.lock"
+)
+
+$files = git -C $root ls-files | Where-Object {
+  $rel = $_ -replace "\\", "/"
+  if ($excludeFiles -contains $rel) { return $false }
+  foreach ($prefix in $excludePrefixes) {
+    if ($rel.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      return $false
+    }
+  }
+  return $true
 }
 
 $hits = @()
-foreach ($file in $files) {
-  $rel = Resolve-Path -Path $file.FullName -Relative
-  $rel = $rel.TrimStart(".", "\", "/")
+foreach ($rel in $files) {
+  $rel = $rel -replace "/", "\"
   if ($allowFiles -contains $rel) { continue }
 
-  $text = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction SilentlyContinue
+  $path = Join-Path $root $rel
+  $text = Get-Content -LiteralPath $path -Raw -ErrorAction SilentlyContinue
+  if ($null -eq $text) { continue }
   foreach ($term in $forbidden) {
     if ($text.ToLowerInvariant().Contains($term.ToLowerInvariant())) {
       $hits += [PSCustomObject]@{ File = $rel; Term = $term }

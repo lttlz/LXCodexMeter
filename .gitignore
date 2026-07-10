@@ -25,6 +25,11 @@ Thumbs.db
 # Local / temp dirs
 local/
 temp/
+workbuddy/memory/
+.workbuddy/memory/
+.tmp-scale-rollback/
+.tmp-v0614-rebuild/
+.tmp-*/
 
 # Editor
 .vscode/
