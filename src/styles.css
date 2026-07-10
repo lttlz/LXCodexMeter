@@ -98,12 +98,12 @@ button { -webkit-app-region: no-drag; }
   display: grid;
   grid-template-columns: 36px 40px 1fr;
   align-items: baseline;
-  gap: 3px;
+  gap: 8px;
   padding: 4px 0;
   border-top: 1px solid rgba(255,255,255,0.06);
 }
 .label { color: rgba(238, 244, 255, 0.72); font-size: 12px; }
-.value { font-size: 18px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
+.value { font-size: 13px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
 .sub { font-size: 10px; font-variant-numeric: tabular-nums; color: rgba(238, 244, 255, 0.52); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .footer { margin-top: 3px; font-variant-numeric: tabular-nums; font-size: 10px; color: rgba(238, 244, 255, 0.48); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .message { flex: 1 1 auto; padding: 14px 12px 14px; color: rgba(238, 244, 255, 0.78); font-size: 12px; line-height: 1.5; }
