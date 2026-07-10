@@ -233,7 +233,6 @@ export default function App() {
   const stripPanelRef = useRef<HTMLElement | null>(null);
   const settingsPanelRef = useRef<HTMLDivElement | null>(null);
   const startupDoneRef = useRef(false);
-  const skipAutoShowRef = useRef(false);
   const setSettingsOpen = useCallback((open: boolean) => {
     settingsOpenRef.current = open;
     setSettingsOpenState(open);
@@ -490,9 +489,9 @@ export default function App() {
     };
   }, [config.taskbar_strip, measureSettingsHeight, settingsOpen]);
 
-  // Show/hide + always-on-top. start_hidden only hides when launched by the OS
-  // autostart entry (backend `should_start_hidden` checks the --autostart arg);
-  // a manual launch always shows the window.
+  // Always-on-top sync plus one-time autostart hiding. Normal launches are
+  // already visible from tauri.conf.json; this effect must not re-show a window
+  // the user has just hidden while the async startup check is still pending.
   useEffect(() => {
     if (!configReady) return;
     const win = getCurrentWindow();
@@ -503,24 +502,13 @@ export default function App() {
       invoke<boolean>('should_start_hidden')
         .then((hidden) => {
           if (hidden) {
-            skipAutoShowRef.current = true;
-            win.hide().catch(() => undefined);
-          } else {
-            win.show().catch(() => undefined);
+            void win.hide();
           }
         })
-        .catch(() => win.show().catch(() => undefined));
+        .catch(() => undefined);
       return;
     }
-    if (skipAutoShowRef.current) {
-      return;
-    }
-    if (config.show_floating_window) {
-      win.show().catch(() => undefined);
-    } else {
-      win.hide().catch(() => undefined);
-    }
-  }, [configReady, config.always_on_top, config.show_floating_window, config.taskbar_strip]);
+  }, [configReady, config.always_on_top, config.taskbar_strip]);
 
   // Re-assert topmost right after the settings panel toggles, because resizing
   // the window can occasionally drop the always-on-top flag on Windows.
@@ -588,15 +576,9 @@ export default function App() {
   }, [config, saveConfig]);
 
   const hideToTray = useCallback(() => {
-    void invoke<boolean>('hide_to_tray')
-      .then((hidden) => {
-        if (!hidden) {
-          console.error('hide_to_tray completed but window is still visible');
-        }
-      })
-      .catch((error) => {
-        console.error('hide_to_tray failed', error);
-      });
+    void invoke('hide_to_tray').catch((error) => {
+      console.error('hide_to_tray failed', error);
+    });
   }, []);
 
   const showNativeContextMenu = useCallback(async (event?: MouseEvent) => {

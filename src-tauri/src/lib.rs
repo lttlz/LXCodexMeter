@@ -20,6 +20,7 @@ use tauri_plugin_updater::UpdaterExt;
 /// Codex has closed. While true, the Codex watcher must not auto-hide. Reset to
 /// false on the next Codex false->true transition (new cycle).
 type ManualShow = Arc<AtomicBool>;
+type ManualHidden = Arc<AtomicBool>;
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
@@ -78,19 +79,19 @@ fn exit_app(app: AppHandle) {
 }
 
 #[tauri::command]
-fn hide_to_tray(app: AppHandle) -> Result<bool, String> {
+fn hide_to_tray(
+    app: AppHandle,
+    manual_hidden: tauri::State<'_, ManualHidden>,
+) -> Result<(), String> {
+    manual_hidden.store(true, Ordering::SeqCst);
+
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
 
     window
         .hide()
-        .map_err(|e| format!("failed to hide main window: {e}"))?;
-
-    window
-        .is_visible()
-        .map(|visible| !visible)
-        .map_err(|e| format!("failed to verify hidden state: {e}"))
+        .map_err(|e| format!("failed to hide main window: {e}"))
 }
 
 // --- Strict URL whitelist (no query, no fragment, no arbitrary tag) ---
@@ -356,6 +357,8 @@ fn restart_app(app: AppHandle) {
 pub fn run() {
     let manual_show: ManualShow = Arc::new(AtomicBool::new(false));
     let manual_show_for_setup = manual_show.clone();
+    let manual_hidden: ManualHidden = Arc::new(AtomicBool::new(false));
+    let manual_hidden_for_setup = manual_hidden.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -367,9 +370,17 @@ pub fn run() {
             Some(vec!["--autostart"]),
         ))
         .manage(manual_show)
+        .manage(manual_hidden)
         .setup(move |app| {
             let cfg = load_config_inner(&app.handle());
             let lang = cfg.language.clone();
+            let autostart_launch = std::env::args().any(|a| a == "--autostart");
+
+            if cfg.start_hidden && autostart_launch {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
 
             let menu = make_menu(app, &lang)?;
 
@@ -381,6 +392,9 @@ pub fn run() {
             let ms_menu = manual_show_for_setup.clone();
             let ms_tray = manual_show_for_setup.clone();
             let ms_watcher = manual_show_for_setup.clone();
+            let mh_menu = manual_hidden_for_setup.clone();
+            let mh_tray = manual_hidden_for_setup.clone();
+            let mh_watcher = manual_hidden_for_setup.clone();
 
             TrayIconBuilder::with_id("main")
                 .tooltip("LX Codex Meter")
@@ -394,6 +408,7 @@ pub fn run() {
                     "settings" => {
                         // user-initiated show -> mark manual
                         ms_menu.store(true, Ordering::SeqCst);
+                        mh_menu.store(false, Ordering::SeqCst);
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
@@ -402,6 +417,7 @@ pub fn run() {
                     }
                     "toggle_strip" => {
                         ms_menu.store(true, Ordering::SeqCst);
+                        mh_menu.store(false, Ordering::SeqCst);
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
@@ -412,11 +428,13 @@ pub fn run() {
                         if let Some(window) = app.get_webview_window("main") {
                             match window.is_visible() {
                                 Ok(true) => {
+                                    mh_menu.store(true, Ordering::SeqCst);
                                     let _ = window.hide();
                                 }
                                 Ok(false) => {
                                     // user chose to show -> manual
                                     ms_menu.store(true, Ordering::SeqCst);
+                                    mh_menu.store(false, Ordering::SeqCst);
                                     let _ = window.show();
                                     let _ = window.set_focus();
                                 }
@@ -440,11 +458,13 @@ pub fn run() {
                         if let Some(window) = app.get_webview_window("main") {
                             match window.is_visible() {
                                 Ok(true) => {
+                                    mh_tray.store(true, Ordering::SeqCst);
                                     let _ = window.hide();
                                 }
                                 Ok(false) => {
                                     // user left-click to show -> manual
                                     ms_tray.store(true, Ordering::SeqCst);
+                                    mh_tray.store(false, Ordering::SeqCst);
                                     let _ = window.show();
                                     let _ = window.set_focus();
                                 }
@@ -495,7 +515,7 @@ pub fn run() {
                             // false -> true: new cycle, reset manual flag + allow one hide
                             ms_watcher.store(false, Ordering::SeqCst);
                             auto_hidden_this_cycle = false;
-                            if c.auto_show_on_codex {
+                            if c.auto_show_on_codex && !mh_watcher.load(Ordering::SeqCst) {
                                 show_window_no_activate(&codex_handle);
                             }
                         }
@@ -506,6 +526,7 @@ pub fn run() {
 
                         if close_confirm >= 2 {
                             // confirmed true -> false
+                            mh_watcher.store(false, Ordering::SeqCst);
                             if c.auto_hide_on_codex_close && !auto_hidden_this_cycle {
                                 if let Some(window) = codex_handle.get_webview_window("main") {
                                     let _ = window.hide();
