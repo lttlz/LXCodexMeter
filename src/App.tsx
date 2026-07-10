@@ -25,7 +25,7 @@ const DEFAULT_SETTINGS_HEIGHT = 660;
 const FLOATING_OK_LAYOUT_BASE_HEIGHT = 142;
 const FLOATING_ERROR_LAYOUT_BASE_HEIGHT = 150;
 const STRIP_LAYOUT_BASE_HEIGHT = 30;
-const TASKBAR_SAFE_GAP = 4;
+const TASKBAR_SAFE_GAP = 0;
 const WINDOW_MOVE_DEBOUNCE_MS = 100;
 
 type WindowBaseSize = {
@@ -273,20 +273,23 @@ export default function App() {
     if (!visible || settingsOpenRef.current) return;
 
     try {
-      const [position, size, monitor] = await Promise.all([
+      const [outerPosition, innerPosition, innerSize, monitor] = await Promise.all([
         win.outerPosition(),
-        win.outerSize(),
+        win.innerPosition(),
+        win.innerSize(),
         currentMonitor(),
       ]);
 
       if (settingsOpenRef.current) return;
       if (monitor) {
         const workAreaBottom = monitor.workArea.position.y + monitor.workArea.size.height;
-        const maxBottom = workAreaBottom - TASKBAR_SAFE_GAP;
-        const currentBottom = position.y + size.height;
-        if (currentBottom > maxBottom && !settingsOpenRef.current) {
+        const targetVisibleBottom = workAreaBottom - TASKBAR_SAFE_GAP;
+        const visibleBottom = innerPosition.y + innerSize.height;
+        if (visibleBottom > targetVisibleBottom && !settingsOpenRef.current) {
+          const overflow = visibleBottom - targetVisibleBottom;
+          const nextOuterY = outerPosition.y - overflow;
           await win
-            .setPosition(new PhysicalPosition(position.x, maxBottom - size.height))
+            .setPosition(new PhysicalPosition(outerPosition.x, nextOuterY))
             .catch(() => undefined);
         }
         return;
