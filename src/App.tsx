@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ButtonHTMLAttributes, CSSProperties, MouseEvent, SyntheticEvent } from 'react';
+import type { ButtonHTMLAttributes, CSSProperties, MouseEvent, Ref, SyntheticEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { LogicalSize } from '@tauri-apps/api/dpi';
@@ -17,6 +17,9 @@ const APP_AUTHOR = 'lttlz';
 const GITHUB_URL = 'https://github.com/lttlz/LXCodexMeter';
 const GITEE_URL = 'https://gitee.com/lttlz/LXCodexMeter';
 const GITHUB_RELEASES = 'https://github.com/lttlz/LXCodexMeter/releases';
+const DEFAULT_WINDOW_WIDTH = 215;
+const MIN_WINDOW_WIDTH = 150;
+const DEFAULT_SETTINGS_HEIGHT = 660;
 
 type WindowBaseSize = {
   width: number;
@@ -45,25 +48,32 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
+function normalizeWindowWidth(width: number, fallback = DEFAULT_WINDOW_WIDTH): number {
+  const next = Number.isFinite(width) ? Math.round(width) : fallback;
+  return Math.max(MIN_WINDOW_WIDTH, next > 1 ? next : fallback);
+}
+
+function getInitialUserWindowWidth(): number {
+  return normalizeWindowWidth(Math.round(window.innerWidth || DEFAULT_WINDOW_WIDTH));
+}
+
 function getBaseWindowSize(
   strip: boolean,
   open: boolean,
   statusOk: boolean | null | undefined,
-  stripWidth = 292,
+  userWindowWidth: number,
+  settingsHeight: number | null,
 ): WindowBaseSize {
+  const width = normalizeWindowWidth(userWindowWidth);
   if (strip) {
     return {
-      width: open ? 215 : stripWidth,
-      // v0.6.12 added a support section with two QR codes; the old 430px height
-      // clipped the about / support area. Lift to 660 so settings fit and the
-      // panel can scroll if it ever overflows.
-      height: open ? 660 : 34,
+      width,
+      height: open ? settingsHeight ?? DEFAULT_SETTINGS_HEIGHT : 34,
     };
   }
   return {
-    width: open ? 215 : 215,
-    // Same reason as strip: 470 was too short once the support QRs landed.
-    height: open ? 660 : statusOk === false ? 150 : 142,
+    width,
+    height: open ? settingsHeight ?? DEFAULT_SETTINGS_HEIGHT : statusOk === false ? 150 : 142,
   };
 }
 
@@ -186,20 +196,27 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [viewportSize, setViewportSize] = useState<WindowBaseSize>(() => getViewportSize());
-  const [stripContentWidth, setStripContentWidth] = useState(292);
+  const [userWindowWidth, setUserWindowWidth] = useState(() => getInitialUserWindowWidth());
+  const [settingsContentHeight, setSettingsContentHeight] = useState<number | null>(null);
   const programmaticResizeRef = useRef(false);
   const programmaticResizeTimerRef = useRef<number | undefined>(undefined);
   const lastBaseKeyRef = useRef('');
-  const stripLinesRef = useRef<HTMLDivElement | null>(null);
+  const userWindowWidthRef = useRef<number | null>(null);
+  const titlebarRef = useRef<HTMLElement | null>(null);
+  const stripPanelRef = useRef<HTMLElement | null>(null);
+  const settingsPanelRef = useRef<HTMLDivElement | null>(null);
   const startupDoneRef = useRef(false);
   const skipAutoShowRef = useRef(false);
+  if (userWindowWidthRef.current === null) {
+    userWindowWidthRef.current = userWindowWidth;
+  }
 
   const lang = config.language;
   const t = useMemo<TFunc>(() => (key: string) => tr(lang, key), [lang]);
 
   const baseSize = useMemo(
-    () => getBaseWindowSize(config.taskbar_strip, settingsOpen, status?.ok, stripContentWidth),
-    [config.taskbar_strip, settingsOpen, status?.ok, stripContentWidth],
+    () => getBaseWindowSize(config.taskbar_strip, settingsOpen, status?.ok, userWindowWidth, settingsContentHeight),
+    [config.taskbar_strip, settingsOpen, status?.ok, userWindowWidth, settingsContentHeight],
   );
   const rawAutoMaxScale = Math.min(viewportSize.width / baseSize.width, viewportSize.height / baseSize.height);
   const contentScale = Number.isFinite(rawAutoMaxScale) && rawAutoMaxScale > 0
@@ -227,6 +244,24 @@ export default function App() {
       programmaticResizeTimerRef.current = undefined;
     }, 90);
   }, []);
+
+  const syncUserWindowWidth = useCallback((width: number) => {
+    const nextWidth = normalizeWindowWidth(width, userWindowWidthRef.current ?? DEFAULT_WINDOW_WIDTH);
+    if (Math.abs((userWindowWidthRef.current ?? 0) - nextWidth) <= 1) return;
+    userWindowWidthRef.current = nextWidth;
+    setUserWindowWidth(nextWidth);
+  }, []);
+
+  const measureSettingsHeight = useCallback(() => {
+    if (!settingsOpen) return;
+    const settings = settingsPanelRef.current;
+    if (!settings) return;
+    const header = config.taskbar_strip ? stripPanelRef.current : titlebarRef.current;
+    const headerHeight = Math.ceil(header?.offsetHeight || (config.taskbar_strip ? 40 : 0));
+    const settingsHeight = Math.ceil(settings.scrollHeight || settings.offsetHeight || 0);
+    const nextHeight = Math.max(1, headerHeight + settingsHeight);
+    setSettingsContentHeight((current) => (current !== null && Math.abs(current - nextHeight) <= 1 ? current : nextHeight));
+  }, [config.taskbar_strip, settingsOpen]);
 
   const openSettings = useCallback(() => {
     // User-initiated open: tell the backend watcher not to auto-hide afterwards.
@@ -289,7 +324,11 @@ export default function App() {
 
   useEffect(() => {
     const onResize = () => {
-      setViewportSize(getViewportSize());
+      const nextViewportSize = getViewportSize();
+      setViewportSize(nextViewportSize);
+      if (!programmaticResizeRef.current) {
+        syncUserWindowWidth(nextViewportSize.width);
+      }
     };
     window.addEventListener('resize', onResize);
     window.setTimeout(onResize, 0);
@@ -299,7 +338,31 @@ export default function App() {
         window.clearTimeout(programmaticResizeTimerRef.current);
       }
     };
-  }, []);
+  }, [syncUserWindowWidth]);
+
+  useEffect(() => {
+    if (!settingsOpen) {
+      setSettingsContentHeight(null);
+      return undefined;
+    }
+
+    const frameId = window.requestAnimationFrame(measureSettingsHeight);
+    const timeoutId = window.setTimeout(measureSettingsHeight, 0);
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measureSettingsHeight);
+    if (observer) {
+      const header = config.taskbar_strip ? stripPanelRef.current : titlebarRef.current;
+      if (settingsPanelRef.current) observer.observe(settingsPanelRef.current);
+      if (header) observer.observe(header);
+    }
+    window.addEventListener('resize', measureSettingsHeight);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+      observer?.disconnect();
+      window.removeEventListener('resize', measureSettingsHeight);
+    };
+  }, [config.taskbar_strip, measureSettingsHeight, settingsOpen]);
 
   // Show/hide + always-on-top. start_hidden only hides when launched by the OS
   // autostart entry (backend `should_start_hidden` checks the --autostart arg);
@@ -391,21 +454,6 @@ export default function App() {
     lastBaseKeyRef.current = baseKey;
     void resizeWindowToBase(baseSize);
   }, [baseSize, config.taskbar_strip, configReady, resizeWindowToBase, settingsOpen, status?.ok]);
-
-  useEffect(() => {
-    if (!config.taskbar_strip || settingsOpen) return;
-    const frameId = window.requestAnimationFrame(() => {
-      const lines = stripLinesRef.current;
-      if (!lines) return;
-      // Use scrollWidth first: getBoundingClientRect() includes parent transform scale,
-      // which made the measured strip width chase the old transparent window width.
-      const contentWidth = Math.ceil(lines.scrollWidth || lines.offsetWidth || lines.getBoundingClientRect().width || 0);
-      const measured = contentWidth + 12;
-      const nextWidth = Math.max(150, measured);
-      setStripContentWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
-    });
-    return () => window.cancelAnimationFrame(frameId);
-  }, [config.show_reset_time, config.taskbar_strip, settingsOpen, status]);
 
   useEffect(() => {
     refresh();
@@ -501,9 +549,9 @@ export default function App() {
         onContextMenu={showNativeContextMenu}
       >
         <div className="meter-content">
-          <section className="strip-panel">
+          <section className="strip-panel" ref={stripPanelRef}>
             <div className="strip-drag" onMouseDown={(event) => startWindowDrag(event)}>
-              <div className="strip-lines" ref={stripLinesRef}>
+              <div className="strip-lines">
                 <div>
                   <b>{t('strip5h')}</b>: {pct(status?.primary?.remaining_percent ?? null)} <span>{t('stripWeek')}</span>: {pct(status?.secondary?.remaining_percent ?? null)} <span>{t('stripVoucher')}</span>: {status?.reset_credits_available ?? 0}
                   {config.show_reset_time && <span>{t('stripData')}</span>}
@@ -524,6 +572,7 @@ export default function App() {
                 saveConfig={saveConfig}
                 onClose={closeSettings}
                 lang={lang}
+                rootRef={settingsPanelRef}
               />
             </section>
           )}
@@ -540,7 +589,7 @@ export default function App() {
     >
       <div className="meter-content">
         <section className="panel">
-          <header className="titlebar" onMouseDown={(event) => startWindowDrag(event)}>
+          <header className="titlebar" ref={titlebarRef} onMouseDown={(event) => startWindowDrag(event)}>
             <div className="title-drag" onMouseDown={(event) => startWindowDrag(event)}>
               <div className="name">{APP_NAME}</div>
             </div>
@@ -558,6 +607,7 @@ export default function App() {
               saveConfig={saveConfig}
               onClose={closeSettings}
               lang={lang}
+              rootRef={settingsPanelRef}
             />
           ) : !status ? (
             <div className="message drag-zone" onMouseDown={(event) => startWindowDrag(event)}>{t('loading')}</div>
@@ -588,11 +638,13 @@ function SettingsPanel({
   saveConfig,
   onClose,
   lang,
+  rootRef,
 }: {
   config: MeterConfig;
   saveConfig: (next: MeterConfig) => Promise<void>;
   onClose: () => void;
   lang: Language;
+  rootRef?: Ref<HTMLDivElement>;
 }) {
   const t = useMemo<TFunc>(() => (key: string) => tr(lang, key), [lang]);
   const [autostartEnabled, setAutostartEnabled] = useState(false);
@@ -646,7 +698,7 @@ function SettingsPanel({
   }, [config, saveConfig]);
 
   return (
-    <div className="settings">
+    <div className="settings" ref={rootRef}>
       <label>
         {t('refreshInterval')}
         <select

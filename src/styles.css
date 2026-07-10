@@ -53,7 +53,7 @@ button { -webkit-app-region: no-drag; }
   display: flex;
   flex-direction: column;
 }
-.meter.settings-open .panel { height: 100%; overflow-x: hidden; overflow-y: auto; }
+.meter.settings-open .panel { height: 100%; overflow: hidden; }
 
 .titlebar {
   display: flex;
@@ -133,6 +133,7 @@ button { -webkit-app-region: no-drag; }
 
 .settings {
   flex: 0 0 auto;
+  width: 100%;
   min-height: 0;
   display: grid;
   gap: 8px;
@@ -221,11 +222,10 @@ button { -webkit-app-region: no-drag; }
   width: 100%;
   flex: 1 1 auto;
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
   background: transparent;
 }
-.strip-settings .settings { height: 100%; align-content: start; }
+.strip-settings .settings { align-content: start; }
 
 /* Keep the normal floating window visually consistent with strip mode and avoid default scrollbars. */
 .panel::-webkit-scrollbar,
