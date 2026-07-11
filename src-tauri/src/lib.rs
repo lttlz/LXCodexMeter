@@ -290,18 +290,14 @@ fn detect_codex_processes(_system: &mut sysinfo::System) -> CodexDetectionResult
     CodexDetectionResult::default()
 }
 
-// Show the window WITHOUT stealing focus (Windows SW_SHOWNOACTIVATE). Used by
-// the Codex auto-show so it never interrupts the user's current input. Manual
-// shows (tray/menu) still use the normal show()+set_focus().
+// Show through Tauri so its managed visibility state stays synchronized. This
+// intentionally does not call set_focus(); runtime acceptance confirms that
+// Codex auto-show does not steal the user's current input focus. Manual shows
+// (tray/menu) still use the normal show()+set_focus().
 #[cfg(windows)]
 fn show_window_no_activate(app: &AppHandle) {
-    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
-    if let Some(w) = app.get_webview_window("main") {
-        if let Ok(hwnd) = w.hwnd() {
-            unsafe {
-                let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-            }
-        }
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
     }
 }
 
@@ -544,7 +540,8 @@ pub fn run() {
 
             // Codex/ChatGPT process watcher.
             // - Detects real user Codex/ChatGPT (excludes our own app-server child).
-            // - auto-show uses SW_SHOWNOACTIVATE (no focus steal).
+            // - auto-show uses Tauri show() without set_focus(), preserving
+            //   managed visibility synchronization; runtime acceptance confirms no focus steal.
             // - auto-hide fires at most ONCE per true->false transition, and
             //   is not blocked by manual tray/settings interactions.
             // - Closing requires 2 consecutive false readings (debounce) so a
