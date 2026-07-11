@@ -233,6 +233,7 @@ export default function App() {
   const stripPanelRef = useRef<HTMLElement | null>(null);
   const settingsPanelRef = useRef<HTMLDivElement | null>(null);
   const startupDoneRef = useRef(false);
+  const refreshInFlightRef = useRef(false);
   const setSettingsOpen = useCallback((open: boolean) => {
     settingsOpenRef.current = open;
     setSettingsOpenState(open);
@@ -376,13 +377,24 @@ export default function App() {
   }, []);
 
   const refresh = useCallback(async () => {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
+
+    const visible = await getCurrentWindow().isVisible().catch(() => false);
+    if (!visible) {
+      refreshInFlightRef.current = false;
+      return;
+    }
+
     setLoading(true);
     try {
-      const next = await invoke<CodexMeterStatus>('get_status', {
+      const next = await invoke<CodexMeterStatus | null>('get_status', {
         mode: 'app_server',
         clientText: '',
       });
-      setStatus(next);
+      if (next !== null) {
+        setStatus(next);
+      }
     } catch (error) {
       setStatus({
         ok: false,
@@ -399,6 +411,7 @@ export default function App() {
       });
     } finally {
       setLoading(false);
+      refreshInFlightRef.current = false;
     }
   }, []);
 

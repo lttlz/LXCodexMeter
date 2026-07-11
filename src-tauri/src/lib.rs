@@ -99,10 +99,25 @@ fn load_config_inner(app: &AppHandle) -> MeterConfig {
 
 #[tauri::command]
 async fn get_status(
+    app: AppHandle,
     mode: Option<String>,
     client_text: Option<String>,
-) -> Result<CodexMeterStatus, String> {
-    read_status(mode, client_text).await
+) -> Result<Option<CodexMeterStatus>, String> {
+    if !is_main_window_visible(&app) {
+        #[cfg(debug_assertions)]
+        eprintln!("status fetch skipped: window hidden");
+        return Ok(None);
+    }
+
+    #[cfg(debug_assertions)]
+    eprintln!("status fetch started: window visible");
+    read_status(mode, client_text).await.map(Some)
+}
+
+fn is_main_window_visible(app: &AppHandle) -> bool {
+    app.get_webview_window("main")
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false)
 }
 
 #[tauri::command]
@@ -290,19 +305,19 @@ fn detect_codex_processes(_system: &mut sysinfo::System) -> CodexDetectionResult
     CodexDetectionResult::default()
 }
 
-// Show through Tauri so its managed visibility state stays synchronized. This
-// intentionally does not call set_focus(); runtime acceptance confirms that
-// Codex auto-show does not steal the user's current input focus. Manual shows
-// (tray/menu) still use the normal show()+set_focus().
-#[cfg(windows)]
-fn show_window_no_activate(app: &AppHandle) {
+// Show through Tauri so its managed visibility state stays synchronized. A
+// successful show requests one immediate frontend refresh; automatic shows do
+// not focus the window, while tray/menu shows retain their focus behavior.
+fn show_window_and_request_refresh(app: &AppHandle, focus: bool) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
+        if window.show().is_ok() {
+            if focus {
+                let _ = window.set_focus();
+            }
+            let _ = app.emit("meter-refresh-requested", ());
+        }
     }
 }
-
-#[cfg(not(windows))]
-fn show_window_no_activate(_app: &AppHandle) {}
 
 /// Called from the frontend whenever the user manually opens/focuses the window
 /// (settings button, context menu, tray-driven open). The watcher resets this
@@ -463,25 +478,21 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "refresh" => {
-                        let _ = app.emit("meter-refresh-requested", ());
+                        if is_main_window_visible(app) {
+                            let _ = app.emit("meter-refresh-requested", ());
+                        }
                     }
                     "settings" => {
                         // user-initiated show -> mark manual
                         ms_menu.set(true);
                         mh_menu.set(false);
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                        show_window_and_request_refresh(app, true);
                         let _ = app.emit("meter-settings-requested", ());
                     }
                     "toggle_strip" => {
                         ms_menu.set(true);
                         mh_menu.set(false);
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                        show_window_and_request_refresh(app, true);
                         let _ = app.emit("meter-toggle-strip-requested", ());
                     }
                     "toggle" => {
@@ -494,8 +505,7 @@ pub fn run() {
                                     // user chose to show -> manual
                                     ms_menu.set(true);
                                     mh_menu.set(false);
-                                    let _ = window.show();
-                                    let _ = window.set_focus();
+                                    show_window_and_request_refresh(app, true);
                                 }
                                 Err(_) => {}
                             }
@@ -523,8 +533,7 @@ pub fn run() {
                                     // user left-click to show -> manual
                                     ms_tray.set(true);
                                     mh_tray.set(false);
-                                    let _ = window.show();
-                                    let _ = window.set_focus();
+                                    show_window_and_request_refresh(&app, true);
                                 }
                                 Err(_) => {}
                             }
@@ -595,7 +604,7 @@ pub fn run() {
                                         "[codex-lifecycle] auto-show suppressed by manual hide in current cycle"
                                     );
                                 } else {
-                                    show_window_no_activate(&codex_handle);
+                                    show_window_and_request_refresh(&codex_handle, false);
                                 }
                             }
                         }
@@ -636,10 +645,24 @@ pub fn run() {
                 }
             });
 
-            // Background update check shortly after startup (non-blocking, silent).
+            // Background update check shortly after startup. Do not contact the
+            // update endpoint until the main window has actually become visible.
             let updater_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(6)).await;
+                loop {
+                    if is_main_window_visible(&updater_handle)
+                        && is_main_window_visible(&updater_handle)
+                    {
+                        break;
+                    }
+                    #[cfg(debug_assertions)]
+                    eprintln!("auto update deferred: window hidden");
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                }
+
+                #[cfg(debug_assertions)]
+                eprintln!("auto update started: window visible");
                 match updater_handle.updater() {
                     Ok(updater) => match updater.check().await {
                         Ok(Some(update)) => {
