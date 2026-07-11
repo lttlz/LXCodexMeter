@@ -41,6 +41,37 @@ impl ManualHidden {
     }
 }
 
+/// Whether the watcher currently considers a user Codex/ChatGPT cycle active.
+/// ManualHidden is meaningful only while this flag is true.
+#[derive(Clone)]
+struct CodexKnownRunning(Arc<AtomicBool>);
+
+impl CodexKnownRunning {
+    fn set(&self, value: bool) {
+        self.0.store(value, Ordering::SeqCst);
+    }
+
+    fn get(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+fn hide_window_for_user<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    manual_hidden: &ManualHidden,
+    codex_known_running: &CodexKnownRunning,
+) -> tauri::Result<()> {
+    let previous = manual_hidden.get();
+    manual_hidden.set(codex_known_running.get());
+
+    if let Err(error) = window.hide() {
+        manual_hidden.set(previous);
+        return Err(error);
+    }
+
+    Ok(())
+}
+
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -101,17 +132,14 @@ fn exit_app(app: AppHandle) {
 fn hide_to_tray(
     app: AppHandle,
     manual_hidden: tauri::State<'_, ManualHidden>,
+    codex_known_running: tauri::State<'_, CodexKnownRunning>,
 ) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
 
-    manual_hidden.set(true);
-
-    if let Err(error) = window.hide() {
-        manual_hidden.set(false);
-        return Err(format!("failed to hide main window: {error}"));
-    }
+    hide_window_for_user(&window, &manual_hidden, &codex_known_running)
+        .map_err(|error| format!("failed to hide main window: {error}"))?;
 
     Ok(())
 }
@@ -201,57 +229,65 @@ fn get_autostart_enabled(app: AppHandle) -> Result<bool, String> {
 }
 
 // --- Codex / ChatGPT process detection ---
-// Detects whether a *user* Codex/ChatGPT is running by enumerating processes
-// through sysinfo. Rules:
-//   1. ChatGPT.exe exists -> user is running ChatGPT/Codex entry -> running
-//   2. codex.exe / Codex.exe exists AND CommandLine does NOT contain
-//      `app-server` or `--stdio` -> real user Codex -> running
-//   3. codex.exe with `app-server` / `--stdio` in CommandLine is LXCodexMeter's
-//      own data-source child -> EXCLUDED, does not count.
-// Never reads Codex files, sessions, tokens, or credentials. Command lines are
-// used only for this in-memory classification and are never logged or emitted.
+// Detects whether a *user* Codex/ChatGPT is running by enumerating process names
+// and parent PIDs through sysinfo. Only a codex.exe whose direct parent is this
+// LXCodexMeter process is excluded. No command lines or executable paths are read.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct CodexDetectionResult {
+    running: bool,
+    matched_chatgpt: usize,
+    matched_codex: usize,
+    excluded_meter_children: usize,
+}
+
+fn classify_codex_process(
+    result: &mut CodexDetectionResult,
+    process_name: &str,
+    is_meter_child: bool,
+) {
+    match process_name.to_ascii_lowercase().as_str() {
+        "chatgpt.exe" => {
+            result.matched_chatgpt += 1;
+            result.running = true;
+        }
+        "codex.exe" if is_meter_child => {
+            result.excluded_meter_children += 1;
+        }
+        "codex.exe" => {
+            result.matched_codex += 1;
+            result.running = true;
+        }
+        _ => {}
+    }
+}
+
 #[cfg(windows)]
-fn codex_running(system: &mut sysinfo::System) -> bool {
-    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, UpdateKind};
+fn detect_codex_processes(system: &mut sysinfo::System) -> CodexDetectionResult {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate};
 
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
-        ProcessRefreshKind::nothing()
-            .without_tasks()
-            .with_cmd(UpdateKind::Always),
+        ProcessRefreshKind::nothing().without_tasks(),
     );
 
+    let meter_pid = Pid::from_u32(std::process::id());
+    let mut result = CodexDetectionResult::default();
+
     for process in system.processes().values() {
-        let name = process.name().to_string_lossy().to_ascii_lowercase();
-
-        if name == "chatgpt.exe" {
-            return true;
-        }
-
-        if name == "codex.exe" {
-            let command_line = process.cmd();
-            if command_line.is_empty() {
-                return true;
-            }
-
-            let is_meter_data_source = command_line.iter().any(|argument| {
-                let argument = argument.to_string_lossy().to_ascii_lowercase();
-                argument.contains("app-server") || argument.contains("--stdio")
-            });
-
-            if !is_meter_data_source {
-                return true;
-            }
-        }
+        classify_codex_process(
+            &mut result,
+            &process.name().to_string_lossy(),
+            process.parent() == Some(meter_pid),
+        );
     }
 
-    false
+    result
 }
 
 #[cfg(not(windows))]
-fn codex_running(_system: &mut sysinfo::System) -> bool {
-    false
+fn detect_codex_processes(_system: &mut sysinfo::System) -> CodexDetectionResult {
+    CodexDetectionResult::default()
 }
 
 // Show the window WITHOUT stealing focus (Windows SW_SHOWNOACTIVATE). Used by
@@ -381,6 +417,8 @@ pub fn run() {
     let manual_show_for_setup = manual_show.clone();
     let manual_hidden = ManualHidden(Arc::new(AtomicBool::new(false)));
     let manual_hidden_for_setup = manual_hidden.clone();
+    let codex_known_running = CodexKnownRunning(Arc::new(AtomicBool::new(false)));
+    let codex_known_running_for_setup = codex_known_running.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -393,6 +431,7 @@ pub fn run() {
         ))
         .manage(manual_show)
         .manage(manual_hidden)
+        .manage(codex_known_running)
         .setup(move |app| {
             let cfg = load_config_inner(&app.handle());
             let lang = cfg.language.clone();
@@ -417,6 +456,9 @@ pub fn run() {
             let mh_menu = manual_hidden_for_setup.clone();
             let mh_tray = manual_hidden_for_setup.clone();
             let mh_watcher = manual_hidden_for_setup.clone();
+            let ckr_menu = codex_known_running_for_setup.clone();
+            let ckr_tray = codex_known_running_for_setup.clone();
+            let ckr_watcher = codex_known_running_for_setup.clone();
 
             TrayIconBuilder::with_id("main")
                 .tooltip("LX Codex Meter")
@@ -450,8 +492,7 @@ pub fn run() {
                         if let Some(window) = app.get_webview_window("main") {
                             match window.is_visible() {
                                 Ok(true) => {
-                                    mh_menu.set(true);
-                                    let _ = window.hide();
+                                    let _ = hide_window_for_user(&window, &mh_menu, &ckr_menu);
                                 }
                                 Ok(false) => {
                                     // user chose to show -> manual
@@ -480,8 +521,7 @@ pub fn run() {
                         if let Some(window) = app.get_webview_window("main") {
                             match window.is_visible() {
                                 Ok(true) => {
-                                    mh_tray.set(true);
-                                    let _ = window.hide();
+                                    let _ = hide_window_for_user(&window, &mh_tray, &ckr_tray);
                                 }
                                 Ok(false) => {
                                     // user left-click to show -> manual
@@ -514,31 +554,52 @@ pub fn run() {
                 let mut prev = false;
                 let mut close_confirm = 0u32;
                 let mut auto_hidden_this_cycle = false;
-                let mut sleep_next = Duration::from_secs(4);
                 let mut process_system = sysinfo::System::new();
+                #[cfg(debug_assertions)]
+                let mut last_detection = None;
 
                 loop {
-                    std::thread::sleep(sleep_next);
                     let c = load_config_inner(&codex_handle);
-                    if !c.auto_show_on_codex && !c.auto_hide_on_codex_close {
-                        prev = false;
-                        close_confirm = 0;
-                        auto_hidden_this_cycle = false;
-                        sleep_next = Duration::from_secs(4);
-                        continue;
+                    let detection = detect_codex_processes(&mut process_system);
+                    #[cfg(debug_assertions)]
+                    if last_detection != Some(detection) {
+                        eprintln!(
+                            "[codex-detection] running={} matched_chatgpt={} matched_codex={} excluded_meter_children={}",
+                            detection.running,
+                            detection.matched_chatgpt,
+                            detection.matched_codex,
+                            detection.excluded_meter_children
+                        );
+                        last_detection = Some(detection);
                     }
 
-                    let cur = codex_running(&mut process_system);
+                    let cur = detection.running;
+                    let mut sleep_next;
                     if cur {
+                        ckr_watcher.set(true);
                         close_confirm = 0;
                         sleep_next = Duration::from_secs(1);
 
                         if !prev {
-                            // false -> true: new cycle, reset manual flag + allow one hide
+                            // false -> true: new cycle, reset manual show + allow one hide
                             ms_watcher.set(false);
                             auto_hidden_this_cycle = false;
-                            if c.auto_show_on_codex && !mh_watcher.get() {
-                                show_window_no_activate(&codex_handle);
+                            #[cfg(debug_assertions)]
+                            eprintln!(
+                                "[codex-lifecycle] false -> true matched_chatgpt={} matched_codex={} excluded_meter_children={}",
+                                detection.matched_chatgpt,
+                                detection.matched_codex,
+                                detection.excluded_meter_children
+                            );
+                            if c.auto_show_on_codex {
+                                if mh_watcher.get() {
+                                    #[cfg(debug_assertions)]
+                                    eprintln!(
+                                        "[codex-lifecycle] auto-show suppressed by manual hide in current cycle"
+                                    );
+                                } else {
+                                    show_window_no_activate(&codex_handle);
+                                }
                             }
                         }
                         prev = true;
@@ -548,7 +609,15 @@ pub fn run() {
 
                         if close_confirm >= 2 {
                             // confirmed true -> false
+                            ckr_watcher.set(false);
                             mh_watcher.set(false);
+                            #[cfg(debug_assertions)]
+                            eprintln!(
+                                "[codex-lifecycle] true -> false matched_chatgpt={} matched_codex={} excluded_meter_children={}",
+                                detection.matched_chatgpt,
+                                detection.matched_codex,
+                                detection.excluded_meter_children
+                            );
                             if c.auto_hide_on_codex_close && !auto_hidden_this_cycle {
                                 if let Some(window) = codex_handle.get_webview_window("main") {
                                     let _ = window.hide();
@@ -560,9 +629,13 @@ pub fn run() {
                             sleep_next = Duration::from_secs(4);
                         }
                     } else {
+                        ckr_watcher.set(false);
+                        mh_watcher.set(false);
                         close_confirm = 0;
                         sleep_next = Duration::from_secs(4);
                     }
+
+                    std::thread::sleep(sleep_next);
                 }
             });
 
@@ -603,4 +676,50 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("LX Codex Meter failed to start");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{classify_codex_process, CodexDetectionResult};
+
+    #[test]
+    fn detection_excludes_only_meter_codex_children() {
+        let mut result = CodexDetectionResult::default();
+
+        classify_codex_process(&mut result, "codex.exe", true);
+        classify_codex_process(&mut result, "Codex.exe", false);
+        classify_codex_process(&mut result, "ChatGPT.exe", false);
+
+        assert!(result.running);
+        assert_eq!(result.matched_chatgpt, 1);
+        assert_eq!(result.matched_codex, 1);
+        assert_eq!(result.excluded_meter_children, 1);
+    }
+
+    #[test]
+    fn detection_ignores_generic_and_helper_processes() {
+        let mut result = CodexDetectionResult::default();
+
+        for name in [
+            "node.exe",
+            "Code.exe",
+            "Cursor.exe",
+            "codex-code-mode-host.exe",
+            "codex-windows-sandbox-setup.exe",
+        ] {
+            classify_codex_process(&mut result, name, false);
+        }
+
+        assert_eq!(result, CodexDetectionResult::default());
+    }
+
+    #[test]
+    fn meter_child_alone_does_not_mark_codex_running() {
+        let mut result = CodexDetectionResult::default();
+
+        classify_codex_process(&mut result, "codex.exe", true);
+
+        assert!(!result.running);
+        assert_eq!(result.excluded_meter_children, 1);
+    }
 }

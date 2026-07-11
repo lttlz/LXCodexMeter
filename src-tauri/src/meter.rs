@@ -157,6 +157,15 @@ impl AppServerClient {
                 }
             };
 
+            #[cfg(debug_assertions)]
+            if let Some(pid) = child.id() {
+                eprintln!(
+                    "[codex-app-server] spawned pid={} parent_pid={}",
+                    pid,
+                    std::process::id()
+                );
+            }
+
             let stdin = match child.stdin.take() {
                 Some(stdin) => stdin,
                 None => {
