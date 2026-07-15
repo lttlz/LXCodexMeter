@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import ConfirmDialog from './ConfirmDialog';
+import ThemedSelect from './ThemedSelect';
 import { tr } from './i18n';
 import {
   createUsageCsvRows,
@@ -226,23 +227,33 @@ export default function UsageLogPage({ lang }: { lang: Language }) {
           </div>
         )}
         <div className="usage-select-row">
-          <label>
+          <div className="settings-field">
             <span>{t('usageTimeFilter')}</span>
-            <select value={preferences.timeFilter} onChange={(event) => setTimeFilter(event.target.value as UsageTimeFilter)}>
-              <option value="today">{t('usageTimeToday')}</option>
-              <option value="7d">{t('usageTime7d')}</option>
-              <option value="30d">{t('usageTime30d')}</option>
-              <option value="all">{t('usageTimeAll')}</option>
-            </select>
-          </label>
-          <label>
+            <ThemedSelect
+              ariaLabel={t('usageTimeFilter')}
+              value={preferences.timeFilter}
+              options={[
+                { value: 'today', label: t('usageTimeToday') },
+                { value: '7d', label: t('usageTime7d') },
+                { value: '30d', label: t('usageTime30d') },
+                { value: 'all', label: t('usageTimeAll') },
+              ]}
+              onChange={(value) => setTimeFilter(value as UsageTimeFilter)}
+            />
+          </div>
+          <div className="settings-field">
             <span>{t('usageSort')}</span>
-            <select value={preferences.sortMode} onChange={(event) => setSortMode(event.target.value as UsageSortMode)}>
-              <option value="latest">{t('usageSortLatest')}</option>
-              <option value="weekly">{t('usageSortWeekly')}</option>
-              <option value="duration">{t('usageSortDuration')}</option>
-            </select>
-          </label>
+            <ThemedSelect
+              ariaLabel={t('usageSort')}
+              value={preferences.sortMode}
+              options={[
+                { value: 'latest', label: t('usageSortLatest') },
+                { value: 'weekly', label: t('usageSortWeekly') },
+                { value: 'duration', label: t('usageSortDuration') },
+              ]}
+              onChange={(value) => setSortMode(value as UsageSortMode)}
+            />
+          </div>
         </div>
       </div>
 

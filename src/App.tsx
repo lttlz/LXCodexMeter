@@ -7,6 +7,7 @@ import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { Menu } from '@tauri-apps/api/menu';
 import type { CodexMeterStatus, Language, LimitWindow, MeterConfig, ThemeMode } from './types';
 import { tr } from './i18n';
+import ThemedSelect from './ThemedSelect';
 import UsageLogPage from './UsageLogPage';
 import donationQr from './assets/support/donation-qr.png';
 import wechatQr from './assets/support/wechat-qr.png';
@@ -795,18 +796,20 @@ function SettingsPanel({
         <UsageLogPage lang={lang} />
       ) : (
         <>
-      <label>
-        {t('refreshInterval')}
-        <select
-          value={config.refresh_interval_secs}
-          onChange={(e) => saveConfig({ ...config, refresh_interval_secs: Number(e.target.value), source_mode: 'app_server' })}
-        >
-          <option value={60}>1 {t('minute')}</option>
-          <option value={180}>3 {t('minute')}</option>
-          <option value={300}>5 {t('minute')}</option>
-          <option value={600}>10 {t('minute')}</option>
-        </select>
-      </label>
+      <div className="settings-field">
+        <span>{t('refreshInterval')}</span>
+        <ThemedSelect
+          ariaLabel={t('refreshInterval')}
+          value={String(config.refresh_interval_secs)}
+          options={[
+            { value: '60', label: `1 ${t('minute')}` },
+            { value: '180', label: `3 ${t('minute')}` },
+            { value: '300', label: `5 ${t('minute')}` },
+            { value: '600', label: `10 ${t('minute')}` },
+          ]}
+          onChange={(value) => saveConfig({ ...config, refresh_interval_secs: Number(value), source_mode: 'app_server' })}
+        />
+      </div>
       <label>
         {t('opacity')}
         <input
@@ -914,28 +917,32 @@ function SettingsPanel({
         />
         {t('showCreditsData')}
       </label>
-      <label>
-        {t('language')}
-        <select
+      <div className="settings-field">
+        <span>{t('language')}</span>
+        <ThemedSelect
+          ariaLabel={t('language')}
           value={config.language}
-          onChange={(e) => onLanguageChange(e.target.value as Language)}
-        >
-          <option value="zh">{t('langZh')}</option>
-          <option value="en">{t('langEn')}</option>
-        </select>
-      </label>
-      <label>
-        {t('theme')}
-        <select
+          options={[
+            { value: 'zh', label: t('langZh') },
+            { value: 'en', label: t('langEn') },
+          ]}
+          onChange={(value) => onLanguageChange(value as Language)}
+        />
+      </div>
+      <div className="settings-field">
+        <span>{t('theme')}</span>
+        <ThemedSelect
+          ariaLabel={t('theme')}
           value={config.theme}
-          onChange={(e) => saveConfig({ ...config, theme: e.target.value as ThemeMode, source_mode: 'app_server' })}
-        >
-          <option value="system">{t('themeSystem')}</option>
-          <option value="light">{t('themeLight')}</option>
-          <option value="dark">{t('themeDark')}</option>
-        </select>
-      </label>
-      <button className="settings-button secondary" type="button" onClick={onClose}>
+          options={[
+            { value: 'system', label: t('themeSystem') },
+            { value: 'light', label: t('themeLight') },
+            { value: 'dark', label: t('themeDark') },
+          ]}
+          onChange={(value) => saveConfig({ ...config, theme: value as ThemeMode, source_mode: 'app_server' })}
+        />
+      </div>
+      <button className="settings-button" type="button" onClick={onClose}>
         {t('closeSettings')}
       </button>
       {config.taskbar_strip && (

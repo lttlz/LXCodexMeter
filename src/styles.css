@@ -31,6 +31,15 @@ button { -webkit-app-region: no-drag; }
   --control-background: rgba(255, 255, 255, 0.07);
   --control-border: rgba(255, 255, 255, 0.12);
   --control-hover: rgba(255, 255, 255, 0.14);
+  --select-control-background: #4a4d53;
+  --select-control-text: #ffffff;
+  --select-control-border: rgba(255, 255, 255, 0.18);
+  --select-menu-background: #767676;
+  --select-option-text: #ffffff;
+  --select-selected-background: #1677ff;
+  --select-selected-text: #ffffff;
+  --select-hover-background: #2f80ed;
+  --select-hover-text: #ffffff;
   --divider-color: rgba(255, 255, 255, 0.08);
   --active-text: #ffffff;
   --active-background: rgba(120, 164, 245, 0.18);
@@ -166,7 +175,8 @@ button { -webkit-app-region: no-drag; }
   border-top: 1px solid var(--divider-color);
   background: var(--surface-secondary);
 }
-.settings label {
+.settings label,
+.settings .settings-field {
   display: grid;
   grid-template-columns: 72px 1fr;
   gap: 8px;
@@ -175,7 +185,7 @@ button { -webkit-app-region: no-drag; }
   color: var(--text-secondary);
 }
 .settings .check { grid-template-columns: 18px 1fr; }
-.settings select, .settings input[type="range"] { width: 100%; }
+.settings .themed-select, .settings input[type="range"] { width: 100%; }
 .settings-button {
   height: 28px;
   border: 1px solid var(--control-border);
@@ -184,17 +194,94 @@ button { -webkit-app-region: no-drag; }
   background: var(--control-background);
   cursor: pointer;
 }
-.settings-button:hover { background: var(--control-hover); }
-.settings-button.secondary { background: var(--surface-secondary); }
-.settings select {
+.settings-button:hover:not(:disabled) { background: var(--control-hover); }
+.settings-button:active:not(:disabled) { filter: brightness(0.9); }
+.settings-button:focus-visible { border-color: var(--control-border); outline: 2px solid color-mix(in srgb, var(--text-secondary) 35%, transparent); outline-offset: 1px; }
+.settings-button:disabled { opacity: 0.5; cursor: default; }
+
+.settings .themed-select {
+  position: relative;
   min-width: 0;
-  border: 1px solid var(--control-border);
-  border-radius: 8px;
-  color: var(--text-primary);
-  background: var(--control-background);
-  padding: 3px 6px;
 }
-.settings select option { color: var(--text-primary); background: var(--control-background); }
+.settings .themed-select-button {
+  width: 100%;
+  min-width: 0;
+  min-height: 27px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  border: 1px solid var(--select-control-border);
+  border-radius: 8px;
+  padding: 3px 7px;
+  color: var(--select-control-text);
+  background: var(--select-control-background);
+  cursor: pointer;
+  text-align: left;
+}
+.settings .themed-select-button:hover,
+.settings .themed-select-button:active,
+.settings .themed-select-button:focus {
+  border-color: var(--select-control-border);
+  color: var(--select-control-text);
+  background: var(--select-control-background);
+  outline: none;
+  box-shadow: none;
+  filter: none;
+}
+.settings .themed-select-button:focus-visible {
+  border-color: var(--select-control-border);
+  color: var(--select-control-text);
+  background: var(--select-control-background);
+  outline: none;
+  box-shadow: none;
+}
+.themed-select-chevron { flex: 0 0 auto; font-size: 10px; line-height: 1; }
+.settings .themed-select-menu {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% + 3px);
+  left: 0;
+  width: 100%;
+  max-height: 184px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: grid;
+  gap: 1px;
+  padding: 3px;
+  border: 1px solid var(--select-control-border);
+  border-radius: 8px;
+  background: var(--select-menu-background);
+  box-shadow: var(--meter-shadow);
+}
+.settings .themed-select-menu.open-above {
+  top: auto;
+  bottom: calc(100% + 3px);
+}
+.settings .themed-select-option {
+  width: 100%;
+  min-height: 27px;
+  border: 0;
+  border-radius: 5px;
+  padding: 4px 7px;
+  color: var(--select-option-text);
+  background: var(--select-menu-background);
+  cursor: pointer;
+  text-align: left;
+}
+.settings .themed-select-option.is-selected {
+  color: var(--select-selected-text);
+  background: var(--select-selected-background);
+}
+.settings .themed-select-option.is-active:not(.is-selected),
+.settings .themed-select-option:hover:not(.is-selected) {
+  color: var(--select-hover-text);
+  background: var(--select-hover-background);
+}
+.settings .themed-select-option:focus-visible {
+  outline: 1px solid var(--select-selected-text);
+  outline-offset: -2px;
+}
 
 .settings-tabs {
   display: grid;
@@ -257,8 +344,9 @@ button { -webkit-app-region: no-drag; }
 }
 .usage-custom-filter button { height: 25px; padding: 0 7px; font-size: 10px; }
 .settings .usage-select-row { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
-.settings .usage-select-row label { display: grid; grid-template-columns: 1fr; gap: 3px; font-size: 9px; }
-.settings .usage-select-row select { height: 26px; font-size: 10px; padding: 2px 4px; }
+.settings .usage-select-row .settings-field { display: grid; grid-template-columns: 1fr; gap: 3px; font-size: 9px; }
+.settings .usage-select-row .themed-select-button { min-height: 26px; font-size: 10px; padding: 2px 5px; }
+.settings .usage-select-row .themed-select-option { min-height: 25px; font-size: 10px; }
 .usage-summary-grid { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
 .usage-summary-grid div { display: grid; gap: 2px; padding: 7px; border: 1px solid var(--divider-color); }
 .usage-summary-grid span { font-size: 9px; color: var(--text-muted); }
@@ -473,14 +561,25 @@ button { -webkit-app-region: no-drag; }
 }
 
 .meter.theme-dark {
+  color-scheme: dark;
   --strip-primary-text: #f4f7ff;
   --strip-secondary-text: rgba(244, 247, 255, 0.72);
   --text-primary: #eef4ff;
   --text-secondary: rgba(238, 244, 255, 0.72);
   --text-muted: rgba(238, 244, 255, 0.52);
+  --select-control-background: #4a4d53;
+  --select-control-text: #ffffff;
+  --select-control-border: rgba(255, 255, 255, 0.18);
+  --select-menu-background: #767676;
+  --select-option-text: #ffffff;
+  --select-selected-background: #1677ff;
+  --select-selected-text: #ffffff;
+  --select-hover-background: #2f80ed;
+  --select-hover-text: #ffffff;
 }
 
 .meter.theme-light {
+  color-scheme: light;
   --strip-primary-text: #172033;
   --strip-secondary-text: rgba(23, 32, 51, 0.68);
   --text-primary: #172033;
@@ -495,6 +594,15 @@ button { -webkit-app-region: no-drag; }
   --control-background: rgba(255, 255, 255, 0.88);
   --control-border: rgba(32, 54, 88, 0.2);
   --control-hover: rgba(32, 78, 150, 0.13);
+  --select-control-background: #ffffff;
+  --select-control-text: #172033;
+  --select-control-border: rgba(32, 54, 88, 0.22);
+  --select-menu-background: #f2f2f2;
+  --select-option-text: #172033;
+  --select-selected-background: #1677ff;
+  --select-selected-text: #ffffff;
+  --select-hover-background: #d9e8ff;
+  --select-hover-text: #173a72;
   --divider-color: rgba(32, 54, 88, 0.13);
   --active-text: #173a72;
   --active-background: rgba(46, 108, 210, 0.14);
@@ -508,8 +616,24 @@ button { -webkit-app-region: no-drag; }
   --scroll-thumb: rgba(32, 54, 88, 0.24);
 }
 
+@media (prefers-color-scheme: dark) {
+  .meter.theme-system {
+    color-scheme: dark;
+    --select-control-background: #4a4d53;
+    --select-control-text: #ffffff;
+    --select-control-border: rgba(255, 255, 255, 0.18);
+    --select-menu-background: #767676;
+    --select-option-text: #ffffff;
+    --select-selected-background: #1677ff;
+    --select-selected-text: #ffffff;
+    --select-hover-background: #2f80ed;
+    --select-hover-text: #ffffff;
+  }
+}
+
 @media (prefers-color-scheme: light) {
   .meter.theme-system {
+    color-scheme: light;
     --strip-primary-text: #172033;
     --strip-secondary-text: rgba(23, 32, 51, 0.68);
     --text-primary: #172033;
@@ -524,6 +648,15 @@ button { -webkit-app-region: no-drag; }
     --control-background: rgba(255, 255, 255, 0.88);
     --control-border: rgba(32, 54, 88, 0.2);
     --control-hover: rgba(32, 78, 150, 0.13);
+    --select-control-background: #ffffff;
+    --select-control-text: #172033;
+    --select-control-border: rgba(32, 54, 88, 0.22);
+    --select-menu-background: #f2f2f2;
+    --select-option-text: #172033;
+    --select-selected-background: #1677ff;
+    --select-selected-text: #ffffff;
+    --select-hover-background: #d9e8ff;
+    --select-hover-text: #173a72;
     --divider-color: rgba(32, 54, 88, 0.13);
     --active-text: #173a72;
     --active-background: rgba(46, 108, 210, 0.14);

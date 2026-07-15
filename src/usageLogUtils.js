@@ -87,7 +87,7 @@ export function createUsageCsvRows(tasks) {
 }
 
 export function usageCsvFileName(language, now = new Date()) {
-  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   return language === 'zh'
     ? `LXCodexMeter_消耗日志_${stamp}.csv`
     : `LXCodexMeter_usage_log_${stamp}.csv`;
