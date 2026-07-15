@@ -1,11 +1,16 @@
 mod meter;
+mod usage_runtime;
+mod usage_task_log;
 
-use meter::{parse_client_usage_text, read_status, CodexMeterStatus, MeterConfig};
+use meter::{parse_client_usage_text, CodexMeterStatus, MeterConfig};
 use std::{
     fs,
     path::PathBuf,
     process::Command,
-    sync::{atomic::{AtomicBool, Ordering}, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 use tauri::{
@@ -15,6 +20,8 @@ use tauri::{
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_updater::UpdaterExt;
+use usage_runtime::UsageRuntime;
+use usage_task_log::{UsageLogPreferences, UsageLogView};
 
 /// Shared flag: set when the user manually shows/maintains the window after
 /// Codex has closed. While true, the Codex watcher must not auto-hide. Reset to
@@ -100,18 +107,24 @@ fn load_config_inner(app: &AppHandle) -> MeterConfig {
 #[tauri::command]
 async fn get_status(
     app: AppHandle,
+    usage_runtime: tauri::State<'_, UsageRuntime>,
     mode: Option<String>,
     client_text: Option<String>,
 ) -> Result<Option<CodexMeterStatus>, String> {
-    if !is_main_window_visible(&app) {
+    if !should_collect_usage(is_main_window_visible(&app), usage_runtime.target_running())
+        && !usage_runtime.final_refresh_pending()
+    {
         #[cfg(debug_assertions)]
-        eprintln!("status fetch skipped: window hidden");
+        eprintln!("status fetch skipped: window hidden and no target process");
         return Ok(None);
     }
 
     #[cfg(debug_assertions)]
-    eprintln!("status fetch started: window visible");
-    read_status(mode, client_text).await.map(Some)
+    eprintln!("status fetch started through coordinated usage channel");
+    usage_runtime
+        .fetch_status(mode, client_text, false, true)
+        .await
+        .map(Some)
 }
 
 fn is_main_window_visible(app: &AppHandle) -> bool {
@@ -120,9 +133,39 @@ fn is_main_window_visible(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+fn should_collect_usage(window_visible: bool, target_process_running: bool) -> bool {
+    window_visible || target_process_running
+}
+
 #[tauri::command]
 fn parse_usage_text(text: String) -> Result<CodexMeterStatus, String> {
     Ok(parse_client_usage_text(text))
+}
+
+#[tauri::command]
+fn get_usage_log(usage_runtime: tauri::State<'_, UsageRuntime>) -> Result<UsageLogView, String> {
+    usage_runtime.log_view()
+}
+
+#[tauri::command]
+fn delete_usage_task(
+    usage_runtime: tauri::State<'_, UsageRuntime>,
+    id: String,
+) -> Result<bool, String> {
+    usage_runtime.delete_task(&id)
+}
+
+#[tauri::command]
+fn clear_usage_tasks(usage_runtime: tauri::State<'_, UsageRuntime>) -> Result<(), String> {
+    usage_runtime.clear_history()
+}
+
+#[tauri::command]
+fn save_usage_log_preferences(
+    usage_runtime: tauri::State<'_, UsageRuntime>,
+    preferences: UsageLogPreferences,
+) -> Result<(), String> {
+    usage_runtime.save_preferences(preferences)
 }
 
 #[tauri::command]
@@ -139,7 +182,8 @@ fn save_config(app: AppHandle, config: MeterConfig) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn exit_app(app: AppHandle) {
+fn exit_app(app: AppHandle, usage_runtime: tauri::State<'_, UsageRuntime>) {
+    usage_runtime.finish_for_app_exit();
     app.exit(0);
 }
 
@@ -339,7 +383,15 @@ fn should_start_hidden(app: AppHandle) -> bool {
 }
 
 // --- Tray menu localization ---
-fn tray_labels(lang: &str) -> (&'static str, &'static str, &'static str, &'static str, &'static str) {
+fn tray_labels(
+    lang: &str,
+) -> (
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+) {
     match lang {
         "en" => (
             "Refresh",
@@ -348,17 +400,14 @@ fn tray_labels(lang: &str) -> (&'static str, &'static str, &'static str, &'stati
             "Show / Hide",
             "Quit",
         ),
-        _ => (
-            "刷新",
-            "设置",
-            "切换任务栏条模式",
-            "显示 / 隐藏",
-            "退出",
-        ),
+        _ => ("刷新", "设置", "切换任务栏条模式", "显示 / 隐藏", "退出"),
     }
 }
 
-fn make_menu<R: tauri::Runtime>(manager: &impl tauri::Manager<R>, lang: &str) -> tauri::Result<Menu<R>> {
+fn make_menu<R: tauri::Runtime>(
+    manager: &impl tauri::Manager<R>,
+    lang: &str,
+) -> tauri::Result<Menu<R>> {
     let (s_refresh, s_settings, s_strip, s_toggle, s_quit) = tray_labels(lang);
     let refresh = MenuItem::with_id(manager, "refresh", s_refresh, true, None::<&str>)?;
     let settings = MenuItem::with_id(manager, "settings", s_settings, true, None::<&str>)?;
@@ -430,6 +479,8 @@ pub fn run() {
     let manual_hidden_for_setup = manual_hidden.clone();
     let codex_known_running = CodexKnownRunning(Arc::new(AtomicBool::new(false)));
     let codex_known_running_for_setup = codex_known_running.clone();
+    let usage_runtime = UsageRuntime::new();
+    let usage_runtime_for_setup = usage_runtime.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -443,10 +494,15 @@ pub fn run() {
         .manage(manual_show)
         .manage(manual_hidden)
         .manage(codex_known_running)
+        .manage(usage_runtime)
         .setup(move |app| {
-            let cfg = load_config_inner(&app.handle());
+            let cfg = load_config_inner(app.handle());
             let lang = cfg.language.clone();
             let autostart_launch = std::env::args().any(|a| a == "--autostart");
+
+            if let Ok(data_dir) = app.path().app_data_dir() {
+                usage_runtime_for_setup.initialize_store(data_dir.join("usage-task-log.json"));
+            }
 
             if cfg.start_hidden && autostart_launch {
                 if let Some(window) = app.get_webview_window("main") {
@@ -470,6 +526,9 @@ pub fn run() {
             let ckr_menu = codex_known_running_for_setup.clone();
             let ckr_tray = codex_known_running_for_setup.clone();
             let ckr_watcher = codex_known_running_for_setup.clone();
+            let usage_quit = usage_runtime_for_setup.clone();
+            let usage_watcher = usage_runtime_for_setup.clone();
+            let usage_collector = usage_runtime_for_setup.clone();
 
             TrayIconBuilder::with_id("main")
                 .tooltip("LX Codex Meter")
@@ -512,6 +571,7 @@ pub fn run() {
                         }
                     }
                     "quit" => {
+                        usage_quit.finish_for_app_exit();
                         app.exit(0);
                     }
                     _ => {}
@@ -533,7 +593,7 @@ pub fn run() {
                                     // user left-click to show -> manual
                                     ms_tray.set(true);
                                     mh_tray.set(false);
-                                    show_window_and_request_refresh(&app, true);
+                                    show_window_and_request_refresh(app, true);
                                 }
                                 Err(_) => {}
                             }
@@ -583,6 +643,7 @@ pub fn run() {
                     let mut sleep_next;
                     if cur {
                         ckr_watcher.set(true);
+                        usage_watcher.set_target_running(true);
                         close_confirm = 0;
                         sleep_next = Duration::from_secs(1);
 
@@ -616,6 +677,7 @@ pub fn run() {
                         if close_confirm >= 2 {
                             // confirmed true -> false
                             ckr_watcher.set(false);
+                            usage_watcher.set_target_running(false);
                             mh_watcher.set(false);
                             #[cfg(debug_assertions)]
                             eprintln!(
@@ -636,12 +698,78 @@ pub fn run() {
                         }
                     } else {
                         ckr_watcher.set(false);
+                        usage_watcher.set_target_running(false);
                         mh_watcher.set(false);
                         close_confirm = 0;
                         sleep_next = Duration::from_secs(4);
                     }
 
                     std::thread::sleep(sleep_next);
+                }
+            });
+
+            // One coordinated backend collector drives both visible and hidden
+            // refreshes. The frontend never owns the recurring timer, and every
+            // request passes through UsageRuntime's single-flight lock.
+            let usage_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut last_fetch = tokio::time::Instant::now();
+                let mut last_idle_check = tokio::time::Instant::now();
+                let mut last_config_check = tokio::time::Instant::now();
+                let mut refresh_interval = Duration::from_secs(
+                    load_config_inner(&usage_handle).refresh_interval_secs.max(60),
+                );
+                let mut was_collecting = false;
+
+                // Let the initial frontend request establish the first snapshot.
+                // If it did not, the recent-result cache below still makes this
+                // an immediate fallback without starting a concurrent app-server.
+                tokio::time::sleep(Duration::from_secs(2)).await;
+
+                loop {
+                    if last_config_check.elapsed() >= Duration::from_secs(10) {
+                        refresh_interval = Duration::from_secs(
+                            load_config_inner(&usage_handle).refresh_interval_secs.max(60),
+                        );
+                        last_config_check = tokio::time::Instant::now();
+                    }
+                    if last_idle_check.elapsed() >= Duration::from_secs(5) {
+                        usage_collector.close_idle_task();
+                        last_idle_check = tokio::time::Instant::now();
+                    }
+
+                    let mut fetched_this_cycle = false;
+                    if usage_collector.take_final_refresh_request() {
+                        let final_result = usage_collector
+                            .fetch_status(Some("app_server".to_string()), Some(String::new()), true, true)
+                            .await;
+                        let final_ok = final_result.as_ref().is_ok_and(|status| status.ok);
+                        if let Ok(status) = final_result {
+                            let _ = usage_handle.emit("meter-status-updated", status);
+                        }
+                        usage_collector.finish_for_process_exit(final_ok);
+                        last_fetch = tokio::time::Instant::now();
+                        fetched_this_cycle = true;
+                    }
+
+                    let should_collect = should_collect_usage(
+                        is_main_window_visible(&usage_handle),
+                        usage_collector.target_running(),
+                    );
+                    if should_collect
+                        && !fetched_this_cycle
+                        && (!was_collecting || last_fetch.elapsed() >= refresh_interval)
+                    {
+                        if let Ok(status) = usage_collector
+                            .fetch_status(Some("app_server".to_string()), Some(String::new()), false, false)
+                            .await
+                        {
+                            let _ = usage_handle.emit("meter-status-updated", status);
+                        }
+                        last_fetch = tokio::time::Instant::now();
+                    }
+                    was_collecting = should_collect;
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             });
 
@@ -680,6 +808,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_status,
             parse_usage_text,
+            get_usage_log,
+            delete_usage_task,
+            clear_usage_tasks,
+            save_usage_log_preferences,
             load_config,
             save_config,
             exit_app,
@@ -700,7 +832,15 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_codex_process, CodexDetectionResult};
+    use super::{classify_codex_process, should_collect_usage, CodexDetectionResult};
+
+    #[test]
+    fn collection_policy_matches_visibility_and_process_matrix() {
+        assert!(should_collect_usage(true, false));
+        assert!(should_collect_usage(true, true));
+        assert!(should_collect_usage(false, true));
+        assert!(!should_collect_usage(false, false));
+    }
 
     #[test]
     fn detection_excludes_only_meter_codex_children() {

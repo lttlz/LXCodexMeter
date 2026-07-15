@@ -12,9 +12,6 @@ use tokio::{
     time::timeout,
 };
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
 fn default_refresh_interval_secs() -> u64 { 300 }
 fn default_show_floating_window() -> bool { true }
 fn default_opacity() -> f64 { 0.92 }
@@ -29,6 +26,7 @@ fn default_start_hidden() -> bool { false }
 fn default_auto_show_on_codex() -> bool { false }
 fn default_auto_hide_on_codex_close() -> bool { false }
 fn default_language() -> String { "zh".to_string() }
+fn default_theme() -> String { "system".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MeterConfig {
@@ -66,6 +64,9 @@ pub struct MeterConfig {
     /// zh | en
     #[serde(default = "default_language")]
     pub language: String,
+    /// system | light | dark
+    #[serde(default = "default_theme")]
+    pub theme: String,
 }
 
 impl Default for MeterConfig {
@@ -86,6 +87,7 @@ impl Default for MeterConfig {
             auto_show_on_codex: default_auto_show_on_codex(),
             auto_hide_on_codex_close: default_auto_hide_on_codex_close(),
             language: default_language(),
+            theme: default_theme(),
         }
     }
 }

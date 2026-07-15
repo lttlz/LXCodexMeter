@@ -5,8 +5,9 @@ import { listen } from '@tauri-apps/api/event';
 import { LogicalPosition, LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi';
 import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { Menu } from '@tauri-apps/api/menu';
-import type { CodexMeterStatus, Language, LimitWindow, MeterConfig } from './types';
+import type { CodexMeterStatus, Language, LimitWindow, MeterConfig, ThemeMode } from './types';
 import { tr } from './i18n';
+import UsageLogPage from './UsageLogPage';
 import donationQr from './assets/support/donation-qr.png';
 import wechatQr from './assets/support/wechat-qr.png';
 import logoImg from './assets/logo.png';
@@ -49,6 +50,7 @@ const DEFAULT_CONFIG: MeterConfig = {
   auto_show_on_codex: false,
   auto_hide_on_codex_close: false,
   language: 'zh',
+  theme: 'system',
 };
 
 function clamp(n: number, min: number, max: number): number {
@@ -427,6 +429,7 @@ export default function App() {
         merged.auto_show_on_codex = typeof merged.auto_show_on_codex === 'boolean' ? merged.auto_show_on_codex : false;
         merged.auto_hide_on_codex_close = typeof merged.auto_hide_on_codex_close === 'boolean' ? merged.auto_hide_on_codex_close : false;
         merged.language = merged.language === 'en' ? 'en' : 'zh';
+        merged.theme = merged.theme === 'light' || merged.theme === 'dark' ? merged.theme : 'system';
         setConfig(merged);
       })
       .catch(() => setConfig(DEFAULT_CONFIG))
@@ -545,14 +548,11 @@ export default function App() {
   }, [refresh]);
 
   useEffect(() => {
-    const secs = Math.max(60, config.refresh_interval_secs || DEFAULT_CONFIG.refresh_interval_secs);
-    const id = window.setInterval(() => refresh(), secs * 1000);
-    return () => window.clearInterval(id);
-  }, [config.refresh_interval_secs, refresh]);
-
-  useEffect(() => {
     let cleanups: Array<() => void> = [];
     listen('meter-refresh-requested', () => refresh()).then((unlisten) => cleanups.push(unlisten));
+    listen<CodexMeterStatus>('meter-status-updated', (event) => {
+      setStatus(event.payload);
+    }).then((unlisten) => cleanups.push(unlisten));
     listen('meter-settings-requested', () => {
       openSettings();
     }).then((unlisten) => cleanups.push(unlisten));
@@ -632,11 +632,12 @@ export default function App() {
     ['--content-viewport-height' as string]: `${contentViewportHeight}px`,
     ['--content-scale' as string]: contentScale,
   } as CSSProperties;
+  const themeClass = config.theme === 'light' ? 'theme-light' : config.theme === 'dark' ? 'theme-dark' : 'theme-system';
 
   if (config.taskbar_strip) {
     return (
       <main
-        className={`meter strip ${settingsOpen ? 'settings-open' : ''}`}
+        className={`meter strip ${themeClass} ${settingsOpen ? 'settings-open' : ''}`}
         style={meterStyle}
         onContextMenu={showNativeContextMenu}
       >
@@ -675,7 +676,7 @@ export default function App() {
 
   return (
     <main
-      className={`meter normal ${settingsOpen ? 'settings-open' : ''}`}
+      className={`meter normal ${themeClass} ${settingsOpen ? 'settings-open' : ''}`}
       style={meterStyle}
       onContextMenu={showNativeContextMenu}
     >
@@ -742,6 +743,7 @@ function SettingsPanel({
   const [autostartEnabled, setAutostartEnabled] = useState(false);
   const [updateState, setUpdateState] = useState<UpdateState>('idle');
   const [updateVersion, setUpdateVersion] = useState('');
+  const [section, setSection] = useState<'settings' | 'usage'>('settings');
 
   useEffect(() => {
     invoke<boolean>('get_autostart_enabled')
@@ -791,6 +793,18 @@ function SettingsPanel({
 
   return (
     <div className="settings" ref={rootRef}>
+      <nav className="settings-tabs" aria-label={t('settingsTab')}>
+        <button className={section === 'settings' ? 'active' : ''} type="button" onClick={() => setSection('settings')}>
+          {t('settingsTab')}
+        </button>
+        <button className={section === 'usage' ? 'active' : ''} type="button" onClick={() => setSection('usage')}>
+          {t('usageLogTab')}
+        </button>
+      </nav>
+      {section === 'usage' ? (
+        <UsageLogPage lang={lang} />
+      ) : (
+        <>
       <label>
         {t('refreshInterval')}
         <select
@@ -920,14 +934,22 @@ function SettingsPanel({
           <option value="en">{t('langEn')}</option>
         </select>
       </label>
+      <label>
+        {t('theme')}
+        <select
+          value={config.theme}
+          onChange={(e) => saveConfig({ ...config, theme: e.target.value as ThemeMode, source_mode: 'app_server' })}
+        >
+          <option value="system">{t('themeSystem')}</option>
+          <option value="light">{t('themeLight')}</option>
+          <option value="dark">{t('themeDark')}</option>
+        </select>
+      </label>
       {config.taskbar_strip && (
         <button className="settings-button" type="button" onClick={() => saveConfig({ ...config, taskbar_strip: false, source_mode: 'app_server' })}>
           {t('backToFloat')}
         </button>
       )}
-      <button className="settings-button secondary" type="button" onClick={onClose}>
-        {t('closeSettings')}
-      </button>
       <div className="about">
         <img className="about-logo" src={logoImg} alt="LX Codex Meter" />
         <div><strong>{APP_NAME}</strong> <span>v{APP_VERSION}</span></div>
@@ -949,6 +971,11 @@ function SettingsPanel({
           </div>
         </div>
       </div>
+        </>
+      )}
+      <button className="settings-button secondary" type="button" onClick={onClose}>
+        {t('closeSettings')}
+      </button>
     </div>
   );
 }

@@ -170,6 +170,92 @@ button { -webkit-app-region: no-drag; }
   padding: 3px 6px;
 }
 
+.settings-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.16);
+}
+.settings-tabs button,
+.usage-log-page button {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  color: #eef4ff;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+.settings-tabs button { height: 26px; font-size: 11px; }
+.settings-tabs button:hover,
+.usage-log-page button:hover { background: rgba(255, 255, 255, 0.12); }
+.settings-tabs button.active,
+.usage-quick-filters button.active {
+  border-color: rgba(155, 190, 255, 0.48);
+  background: rgba(120, 164, 245, 0.18);
+  color: #ffffff;
+}
+
+.usage-log-page {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  color: rgba(238, 244, 255, 0.78);
+}
+.usage-log-heading { display: grid; gap: 3px; }
+.usage-log-heading strong { font-size: 13px; color: #f2f6ff; }
+.usage-log-heading span { font-size: 10px; line-height: 1.45; color: rgba(238, 244, 255, 0.54); }
+.usage-filter-card,
+.usage-summary-grid,
+.usage-task-row,
+.usage-management {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.12);
+}
+.usage-filter-card { display: grid; gap: 7px; padding: 8px; }
+.usage-filter-label { font-size: 10px; color: rgba(238, 244, 255, 0.56); }
+.usage-quick-filters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; }
+.usage-quick-filters button { height: 24px; padding: 0 2px; font-size: 9px; }
+.usage-custom-filter { display: grid; grid-template-columns: auto minmax(42px, 1fr) auto auto; align-items: center; gap: 4px; font-size: 10px; }
+.usage-custom-filter input {
+  width: 100%;
+  min-width: 0;
+  height: 25px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  padding: 2px 5px;
+  color: #eef4ff;
+  background: rgba(0, 0, 0, 0.18);
+}
+.usage-custom-filter button { height: 25px; padding: 0 7px; font-size: 10px; }
+.settings .usage-select-row { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.settings .usage-select-row label { display: grid; grid-template-columns: 1fr; gap: 3px; font-size: 9px; }
+.settings .usage-select-row select { height: 26px; font-size: 10px; padding: 2px 4px; }
+.usage-summary-grid { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
+.usage-summary-grid div { display: grid; gap: 2px; padding: 7px; border: 1px solid rgba(255, 255, 255, 0.045); }
+.usage-summary-grid span { font-size: 9px; color: rgba(238, 244, 255, 0.5); }
+.usage-summary-grid strong { font-size: 12px; color: #f4f7ff; font-variant-numeric: tabular-nums; }
+.usage-warning { padding: 7px 8px; border-radius: 8px; color: #ffd9a6; background: rgba(255, 184, 92, 0.08); font-size: 10px; line-height: 1.4; }
+.usage-empty { display: grid; justify-items: center; gap: 7px; padding: 18px 8px; text-align: center; font-size: 10px; color: rgba(238, 244, 255, 0.58); }
+.usage-empty button { height: 25px; padding: 0 9px; font-size: 10px; }
+.usage-task-list { display: grid; gap: 6px; }
+.usage-task-row { position: relative; display: grid; gap: 6px; padding: 8px; }
+.usage-task-time { padding-right: 22px; font-size: 10px; color: rgba(238, 244, 255, 0.64); font-variant-numeric: tabular-nums; }
+.usage-delete { position: absolute; top: 5px; right: 5px; width: 21px; height: 21px; padding: 0; font-size: 14px; color: rgba(238, 244, 255, 0.5); }
+.usage-delete:disabled { opacity: 0.25; cursor: default; }
+.usage-task-row dl { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 0; }
+.usage-task-row dl div { display: grid; gap: 2px; min-width: 0; }
+.usage-task-row dt { font-size: 9px; color: rgba(238, 244, 255, 0.46); }
+.usage-task-row dd { margin: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: rgba(238, 244, 255, 0.76); font-variant-numeric: tabular-nums; }
+.usage-task-row .usage-primary-value dd { font-size: 14px; font-weight: 800; color: #ffffff; }
+.usage-load-more { width: 100%; height: 27px; font-size: 10px; }
+.usage-management { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 5px; padding: 7px; }
+.usage-management span { font-size: 10px; color: rgba(238, 244, 255, 0.55); }
+.usage-management button { height: 25px; padding: 0 7px; font-size: 9px; }
+.usage-management button.danger { color: #ffc7c7; border-color: rgba(255, 130, 130, 0.22); }
+
 .about {
   display: grid;
   gap: 3px;
@@ -328,4 +414,50 @@ button { -webkit-app-region: no-drag; }
     width: 88px;
     height: 88px;
   }
+}
+
+.meter.theme-light { color: #172033; background: rgba(246, 249, 255, 0.96); box-shadow: 0 8px 24px rgba(38, 54, 82, 0.2); }
+.meter.theme-light .settings { background: rgba(30, 72, 140, 0.035); border-color: rgba(32, 54, 88, 0.12); }
+.meter.theme-light .label, .meter.theme-light .settings label { color: rgba(23, 32, 51, 0.7); }
+.meter.theme-light .sub, .meter.theme-light .footer, .meter.theme-light .hint, .meter.theme-light .about, .meter.theme-light .support-desc, .meter.theme-light .qr-item span { color: rgba(23, 32, 51, 0.52); }
+.meter.theme-light .actions button, .meter.theme-light .settings-button, .meter.theme-light .settings-tabs button, .meter.theme-light .usage-log-page button { color: #172033; border-color: rgba(32, 54, 88, 0.16); background: rgba(32, 78, 150, 0.07); }
+.meter.theme-light .actions button:hover, .meter.theme-light .settings-button:hover, .meter.theme-light .settings-tabs button:hover, .meter.theme-light .usage-log-page button:hover { background: rgba(32, 78, 150, 0.13); }
+.meter.theme-light .settings select, .meter.theme-light .usage-custom-filter input { color: #172033; border-color: rgba(32, 54, 88, 0.16); background: rgba(255, 255, 255, 0.78); }
+.meter.theme-light .settings-tabs, .meter.theme-light .usage-filter-card, .meter.theme-light .usage-summary-grid, .meter.theme-light .usage-task-row, .meter.theme-light .usage-management { background: rgba(32, 78, 150, 0.035); border-color: rgba(32, 54, 88, 0.11); }
+.meter.theme-light .usage-log-heading strong, .meter.theme-light .usage-summary-grid strong, .meter.theme-light .usage-task-row .usage-primary-value dd { color: #172033; }
+.meter.theme-light .usage-log-heading span, .meter.theme-light .usage-filter-label, .meter.theme-light .usage-summary-grid span, .meter.theme-light .usage-task-time, .meter.theme-light .usage-task-row dt, .meter.theme-light .usage-management span, .meter.theme-light .usage-empty { color: rgba(23, 32, 51, 0.55); }
+.meter.theme-light .usage-task-row dd { color: rgba(23, 32, 51, 0.76); }
+.meter.theme-light .settings-tabs button.active, .meter.theme-light .usage-quick-filters button.active { color: #173a72; background: rgba(46, 108, 210, 0.14); border-color: rgba(46, 108, 210, 0.32); }
+
+@media (prefers-color-scheme: light) {
+  :root { color: #172033; }
+  .meter { color: #172033; background: rgba(246, 249, 255, 0.96); box-shadow: 0 8px 24px rgba(38, 54, 82, 0.2); }
+  .settings { background: rgba(30, 72, 140, 0.035); border-color: rgba(32, 54, 88, 0.12); }
+  .label, .settings label { color: rgba(23, 32, 51, 0.7); }
+  .sub, .footer, .hint, .about, .support-desc, .qr-item span { color: rgba(23, 32, 51, 0.52); }
+  .actions button, .settings-button, .settings-tabs button, .usage-log-page button {
+    color: #172033;
+    border-color: rgba(32, 54, 88, 0.16);
+    background: rgba(32, 78, 150, 0.07);
+  }
+  .actions button:hover, .settings-button:hover, .settings-tabs button:hover, .usage-log-page button:hover { background: rgba(32, 78, 150, 0.13); }
+  .settings select, .usage-custom-filter input { color: #172033; border-color: rgba(32, 54, 88, 0.16); background: rgba(255, 255, 255, 0.78); }
+  .settings-tabs, .usage-filter-card, .usage-summary-grid, .usage-task-row, .usage-management { background: rgba(32, 78, 150, 0.035); border-color: rgba(32, 54, 88, 0.11); }
+  .usage-log-heading strong, .usage-summary-grid strong, .usage-task-row .usage-primary-value dd { color: #172033; }
+  .usage-log-heading span, .usage-filter-label, .usage-summary-grid span, .usage-task-time, .usage-task-row dt, .usage-management span, .usage-empty { color: rgba(23, 32, 51, 0.55); }
+  .usage-task-row dd { color: rgba(23, 32, 51, 0.76); }
+  .settings-tabs button.active, .usage-quick-filters button.active { color: #173a72; background: rgba(46, 108, 210, 0.14); border-color: rgba(46, 108, 210, 0.32); }
+
+  .meter.theme-dark { color: #eef4ff; background: rgba(14, 19, 32, 0.92); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32); }
+  .meter.theme-dark .settings { background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.08); }
+  .meter.theme-dark .label, .meter.theme-dark .settings label { color: rgba(238, 244, 255, 0.72); }
+  .meter.theme-dark .sub, .meter.theme-dark .footer, .meter.theme-dark .hint, .meter.theme-dark .about, .meter.theme-dark .support-desc, .meter.theme-dark .qr-item span { color: rgba(238, 244, 255, 0.52); }
+  .meter.theme-dark .actions button, .meter.theme-dark .settings-button, .meter.theme-dark .settings-tabs button, .meter.theme-dark .usage-log-page button { color: #eef4ff; border-color: rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.08); }
+  .meter.theme-dark .actions button:hover, .meter.theme-dark .settings-button:hover, .meter.theme-dark .settings-tabs button:hover, .meter.theme-dark .usage-log-page button:hover { background: rgba(255, 255, 255, 0.14); }
+  .meter.theme-dark .settings select, .meter.theme-dark .usage-custom-filter input { color: #eef4ff; border-color: rgba(255, 255, 255, 0.12); background: rgba(0, 0, 0, 0.18); }
+  .meter.theme-dark .settings-tabs, .meter.theme-dark .usage-filter-card, .meter.theme-dark .usage-summary-grid, .meter.theme-dark .usage-task-row, .meter.theme-dark .usage-management { background: rgba(0, 0, 0, 0.12); border-color: rgba(255, 255, 255, 0.09); }
+  .meter.theme-dark .usage-log-heading strong, .meter.theme-dark .usage-summary-grid strong, .meter.theme-dark .usage-task-row .usage-primary-value dd { color: #f4f7ff; }
+  .meter.theme-dark .usage-log-heading span, .meter.theme-dark .usage-filter-label, .meter.theme-dark .usage-summary-grid span, .meter.theme-dark .usage-task-time, .meter.theme-dark .usage-task-row dt, .meter.theme-dark .usage-management span, .meter.theme-dark .usage-empty { color: rgba(238, 244, 255, 0.55); }
+  .meter.theme-dark .usage-task-row dd { color: rgba(238, 244, 255, 0.76); }
+  .meter.theme-dark .settings-tabs button.active, .meter.theme-dark .usage-quick-filters button.active { color: #ffffff; background: rgba(120, 164, 245, 0.18); border-color: rgba(155, 190, 255, 0.48); }
 }
