@@ -38,8 +38,6 @@ button { -webkit-app-region: no-drag; }
   --select-option-text: #ffffff;
   --select-selected-background: #1677ff;
   --select-selected-text: #ffffff;
-  --select-hover-background: #2f80ed;
-  --select-hover-text: #ffffff;
   --divider-color: rgba(255, 255, 255, 0.08);
   --active-text: #ffffff;
   --active-background: rgba(120, 164, 245, 0.18);
@@ -274,13 +272,13 @@ button { -webkit-app-region: no-drag; }
   text-align: left;
 }
 .settings .themed-select-option[aria-selected="true"] {
+  color: var(--select-option-text);
+  background: var(--select-menu-background);
+}
+.settings .themed-select-option.is-active,
+.settings .themed-select-option:hover {
   color: var(--select-selected-text);
   background: var(--select-selected-background);
-}
-.settings .themed-select-option.is-active:not([aria-selected="true"]),
-.settings .themed-select-option:hover:not([aria-selected="true"]) {
-  color: var(--select-hover-text);
-  background: var(--select-hover-background);
 }
 .settings .themed-select-option:focus-visible {
   outline: 1px solid var(--select-selected-text);
@@ -578,8 +576,6 @@ button { -webkit-app-region: no-drag; }
   --select-option-text: #ffffff;
   --select-selected-background: #1677ff;
   --select-selected-text: #ffffff;
-  --select-hover-background: #2f80ed;
-  --select-hover-text: #ffffff;
 }
 
 .meter.theme-light {
@@ -605,8 +601,6 @@ button { -webkit-app-region: no-drag; }
   --select-option-text: #172033;
   --select-selected-background: #1677ff;
   --select-selected-text: #ffffff;
-  --select-hover-background: #d9e8ff;
-  --select-hover-text: #173a72;
   --divider-color: rgba(32, 54, 88, 0.13);
   --active-text: #173a72;
   --active-background: rgba(46, 108, 210, 0.14);
@@ -630,8 +624,6 @@ button { -webkit-app-region: no-drag; }
     --select-option-text: #ffffff;
     --select-selected-background: #1677ff;
     --select-selected-text: #ffffff;
-    --select-hover-background: #2f80ed;
-    --select-hover-text: #ffffff;
   }
 }
 
@@ -659,8 +651,6 @@ button { -webkit-app-region: no-drag; }
     --select-option-text: #172033;
     --select-selected-background: #1677ff;
     --select-selected-text: #ffffff;
-    --select-hover-background: #d9e8ff;
-    --select-hover-text: #173a72;
     --divider-color: rgba(32, 54, 88, 0.13);
     --active-text: #173a72;
     --active-background: rgba(46, 108, 210, 0.14);

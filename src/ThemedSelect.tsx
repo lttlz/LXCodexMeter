@@ -6,7 +6,7 @@ import {
   useState,
   type KeyboardEvent,
 } from 'react';
-import { moveThemedSelectIndex } from './themedSelectUtils.js';
+import { getThemedSelectOpeningIndex, moveThemedSelectIndex } from './themedSelectUtils.js';
 
 export type ThemedSelectOption = {
   value: string;
@@ -27,14 +27,17 @@ export default function ThemedSelect({ ariaLabel, value, options, onChange }: Th
   const [open, setOpen] = useState(false);
   const [openAbove, setOpenAbove] = useState(false);
   const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
-  const [activeIndex, setActiveIndex] = useState(selectedIndex);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
-  const close = useCallback(() => setOpen(false), []);
-  const openMenu = useCallback(() => {
+  const close = useCallback(() => {
+    setOpen(false);
+    setActiveIndex(null);
+  }, []);
+  const openMenu = useCallback((action: 'pointer' | 'keyboard-neutral' | 'ArrowDown' | 'ArrowUp') => {
     const rect = buttonRef.current?.getBoundingClientRect();
     const menuHeight = Math.min(options.length * 29 + 8, 184);
     setOpenAbove(Boolean(rect && rect.bottom + menuHeight > window.innerHeight - 8 && rect.top > menuHeight));
-    setActiveIndex(selectedIndex);
+    setActiveIndex(getThemedSelectOpeningIndex(selectedIndex, action, options.length));
     setOpen(true);
   }, [options.length, selectedIndex]);
 
@@ -42,9 +45,9 @@ export default function ThemedSelect({ ariaLabel, value, options, onChange }: Th
     const option = options[index];
     if (!option) return;
     onChange(option.value);
-    setOpen(false);
+    close();
     window.setTimeout(() => buttonRef.current?.focus(), 0);
-  }, [onChange, options]);
+  }, [close, onChange, options]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -63,26 +66,33 @@ export default function ThemedSelect({ ariaLabel, value, options, onChange }: Th
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       if (!open) {
-        openMenu();
+        openMenu(event.key);
       } else {
-        setActiveIndex((current) => moveThemedSelectIndex(current, event.key === 'ArrowDown' ? 1 : -1, options.length));
+        setActiveIndex((current) => {
+          const next = moveThemedSelectIndex(
+            current ?? selectedIndex,
+            event.key === 'ArrowDown' ? 1 : -1,
+            options.length,
+          );
+          return next < 0 ? null : next;
+        });
       }
       return;
     }
     if (event.key === 'Home' && open) {
       event.preventDefault();
-      setActiveIndex(0);
+      setActiveIndex(options.length > 0 ? 0 : null);
       return;
     }
     if (event.key === 'End' && open) {
       event.preventDefault();
-      setActiveIndex(options.length - 1);
+      setActiveIndex(options.length > 0 ? options.length - 1 : null);
       return;
     }
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      if (open) selectAt(activeIndex);
-      else openMenu();
+      if (open) selectAt(activeIndex ?? selectedIndex);
+      else openMenu('keyboard-neutral');
       return;
     }
     if (event.key === 'Escape' && open) {
@@ -104,8 +114,8 @@ export default function ThemedSelect({ ariaLabel, value, options, onChange }: Th
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listboxId}
-        aria-activedescendant={open ? `${listboxId}-option-${activeIndex}` : undefined}
-        onClick={() => { if (open) close(); else openMenu(); }}
+        aria-activedescendant={open && activeIndex !== null ? `${listboxId}-option-${activeIndex}` : undefined}
+        onClick={() => { if (open) close(); else openMenu('pointer'); }}
         onKeyDown={handleKeyDown}
       >
         <span>{selected?.label ?? value}</span>

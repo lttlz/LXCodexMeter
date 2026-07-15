@@ -7,7 +7,7 @@ import {
   formatUsageTimeRange,
   usageCsvFileName,
 } from '../src/usageLogUtils.js';
-import { moveThemedSelectIndex } from '../src/themedSelectUtils.js';
+import { getThemedSelectOpeningIndex, moveThemedSelectIndex } from '../src/themedSelectUtils.js';
 
 const now = new Date('2026-07-15T12:00:00+08:00');
 
@@ -148,7 +148,8 @@ test('theme classes own strip and themed select variables independent of system 
   assert.match(triggerStateBlock, /filter:\s*none/);
   assert.doesNotMatch(triggerStateBlock, /select-selected|active-background|#1677ff/i);
   assert.match(css, /\.settings \.themed-select-button:focus-visible\s*\{[^}]*border-color:\s*var\(--select-control-border\);[^}]*box-shadow:\s*none/s);
-  assert.match(css, /\.settings \.themed-select-option\[aria-selected="true"\]\s*\{[^}]*color:\s*var\(--select-selected-text\);[^}]*background:\s*var\(--select-selected-background\)/s);
+  assert.match(css, /\.settings \.themed-select-option\[aria-selected="true"\]\s*\{[^}]*color:\s*var\(--select-option-text\);[^}]*background:\s*var\(--select-menu-background\)/s);
+  assert.match(css, /\.settings \.themed-select-option\.is-active,[^{]*\.settings \.themed-select-option:hover\s*\{[^}]*color:\s*var\(--select-selected-text\);[^}]*background:\s*var\(--select-selected-background\)/s);
   assert.equal((css.match(/background:\s*var\(--select-selected-background\)/g) ?? []).length, 1);
   assert.match(css, /\.confirm-overlay\s*\{[^}]*background:\s*var\(--overlay-background\)/s);
 });
@@ -168,6 +169,11 @@ test('all five dropdowns use ThemedSelect with keyboard and dismissal support', 
   assert.match(component, /tabIndex=\{-1\}/);
   assert.match(component, /document\.addEventListener\('pointerdown'/);
   assert.match(component, /aria-selected=/);
+  assert.match(component, /useState<number \| null>\(null\)/);
+  assert.match(component, /openMenu\('pointer'\)/);
+  assert.match(component, /setActiveIndex\(null\)/);
+  assert.match(component, /index === activeIndex \? 'is-active'/);
+  assert.doesNotMatch(component, /index === selectedIndex \? 'is-active'/);
 });
 
 test('ThemedSelect arrow movement wraps without changing an empty list', () => {
@@ -175,6 +181,15 @@ test('ThemedSelect arrow movement wraps without changing an empty list', () => {
   assert.equal(moveThemedSelectIndex(2, 1, 3), 0);
   assert.equal(moveThemedSelectIndex(0, -1, 3), 2);
   assert.equal(moveThemedSelectIndex(0, 1, 0), -1);
+});
+
+test('ThemedSelect opening keeps pointer and neutral keyboard opens inactive', () => {
+  assert.equal(getThemedSelectOpeningIndex(1, 'pointer', 4), null);
+  assert.equal(getThemedSelectOpeningIndex(1, 'keyboard-neutral', 4), null);
+  assert.equal(getThemedSelectOpeningIndex(1, 'ArrowDown', 4), 2);
+  assert.equal(getThemedSelectOpeningIndex(1, 'ArrowUp', 4), 0);
+  assert.equal(getThemedSelectOpeningIndex(0, 'ArrowUp', 4), 3);
+  assert.equal(getThemedSelectOpeningIndex(0, 'ArrowDown', 0), null);
 });
 
 test('quota UI reads normalized fields and keeps fixed semantic titles', () => {
