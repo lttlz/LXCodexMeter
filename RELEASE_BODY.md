@@ -1,136 +1,78 @@
-# LX Codex Meter v0.6.14
+# LX Codex Meter v0.6.15
 
-v0.6.14 是一次较大的桌面体验、自动化、安装和隐私升级。
+v0.6.15 新增本地额度消耗日志，并完善额度识别、主题界面和日志管理体验。
 
-这一版本让 LX Codex Meter 不再只是一个额度显示窗口，而是能够跟随 Codex / ChatGPT 工作状态自动出现和隐藏的 Windows 桌面工具。
+## 主要更新
 
-## 本版本亮点
+- 新增消耗日志
+  - 按周额度消耗筛选：全部、≥1%、≥3%、≥5%、自定义
+  - 支持今天、最近 7 天、最近 30 天和全部时间范围
+  - 支持按时间、周额度消耗和任务耗时排序
+  - 显示任务数量、周额度总消耗、平均消耗和最长任务时间
+  - 记录任务时间范围、5 小时消耗、周额度消耗和结束时额度余额
 
-### 跟随 Codex 自动显示和隐藏
+- 新增 CSV 导出
+  - 使用 Windows 原生“另存为”
+  - 导出当前筛选和排序后的全部结果
+  - UTF-8 BOM + CRLF，可直接使用 Excel 打开
+  - 不导出提示词、回答、账号、token 或会话内容
 
-- Codex / ChatGPT 启动时可以自动显示 Meter
-- Codex / ChatGPT 关闭后可以自动隐藏到托盘
-- 自动显示不主动调用窗口聚焦
-- 自动显示后仍可立即再次隐藏
-- 修复了必须先打开设置页才能再次隐藏的问题
+- 完善日志管理
+  - 单条删除增加应用内二次确认
+  - 清空全部历史增加应用内二次确认
+  - 当前活动任务和额度基准不会被误清除
 
-### 隐藏状态网络静默
+- 新增主题功能
+  - 跟随系统
+  - 浅色
+  - 深色
+  - 设置页、悬浮窗、条形模式和日志页统一适配
 
-当 Meter 窗口隐藏时：
+- 修复额度语义映射
+  - 不再把上游 primary / secondary 槽位固定当作 5 小时和周额度
+  - 当 Codex 暂时不提供 5 小时额度时，5h 显示 `--`
+  - 周额度仍会显示在正确位置并正常记录
+  - 5 小时额度恢复后会安全建立新基准，不产生虚假消耗
 
-- 不发起新的 Codex 额度读取
-- 不启动 Meter 自有 Codex App Server
-- 不执行定时额度刷新
-- 延后后台自动更新检查
-- 保留上一次额度数据显示
+- 完善隐藏状态记录
+  - LXCodexMeter 隐藏后，只要真实 Codex.exe 或 ChatGPT.exe 正在运行，仍可继续记录额度变化
+  - 两者均未运行时暂停读取，避免不必要的后台请求
 
-窗口重新显示后会立即刷新额度，并恢复正常更新检查。
+- 修复界面问题
+  - 修复浅色条形模式字段不可见
+  - 修复浅色设置页文字对比度
+  - 修复关闭设置按钮配色和位置
+  - 修复下拉菜单选中项与当前候选项高亮逻辑
+  - 完善中英文文案
 
-### 更完整的 Windows 桌面体验
+## 隐私说明
 
-- 新增开机自启动
-- 新增启动后隐藏到托盘
-- 新增右键隐藏到托盘
-- 新增中文 / 英文界面切换
-- 新增中文 / 英文安装程序语言选择
-- 改进任务栏条模式和窗口贴合
-- 改进窗口宽度、缩放和设置页布局
-- 更新应用、托盘、安装程序和桌面图标
+LX Codex Meter 继续只通过：
 
-### 应用内更新
+`codex.exe app-server --stdio`
 
-- 检测到新版本后可以直接下载并安装
-- 保留 GitHub / Gitee 手动下载入口
-- 安装包继续使用签名校验
-- 不执行静默后台安装
+读取以下状态接口：
 
-## 隐私设计
+- `account/read`
+- `rateLimits/read`
+- `usage/read`
 
-LX Codex Meter 不读取：
+不会读取或上传：
 
-- 浏览器 Cookie
-- Token
+- 对话内容
+- 提示词与回答
+- cookies
+- token
 - auth.json
-- Codex 对话内容
-- 用户项目文件
-- 网页内容
+- 项目文件
+- 工作目录
 
-额度信息仅通过本机 Codex App Server 获取。
+所有消耗日志只保存在本机应用数据目录。
 
-Codex / ChatGPT 生命周期检测只使用进程名和父进程关系，不读取完整命令行、文件或会话内容。
+## 下载
 
-窗口隐藏时不会发起新的额度读取和自动更新请求。
+建议普通用户下载 NSIS 安装包：
 
-## 推荐下载
+`LX.Codex.Meter_0.6.15_x64-setup.exe`
 
-LX.Codex.Meter_0.6.14_x64-setup.exe
-
-## 备用安装包
-
-LX.Codex.Meter_0.6.14_x64_en-US.msi
-
----
-
-# LX Codex Meter v0.6.14
-
-v0.6.14 is a major desktop experience, automation, installer, and privacy update.
-
-LX Codex Meter is no longer only a usage display window. It can now follow the Codex / ChatGPT lifecycle and appear only when needed.
-
-## Highlights
-
-### Lifecycle-aware auto show and hide
-
-- Automatically show when Codex or ChatGPT starts
-- Automatically hide to tray after they close
-- Automatic show does not explicitly focus the window
-- The Meter can be hidden again immediately after auto-show
-- Fixes the issue where Settings had to be opened before the window could be hidden again
-
-### Network quiet while hidden
-
-While the Meter window is hidden:
-
-- No new Codex usage requests are started
-- The Meter does not start its own Codex App Server child
-- Scheduled usage refreshes are skipped
-- Automatic update checks are deferred
-- The last displayed usage data is kept
-
-Usage is refreshed immediately after the window becomes visible again.
-
-### Improved Windows desktop experience
-
-- Optional autostart
-- Optional start hidden
-- Right-click hide-to-tray
-- Chinese / English UI
-- Chinese / English NSIS installer language selector
-- Improved taskbar strip positioning
-- Improved width, scale, and Settings layout
-- Updated app, tray, installer, and desktop icons
-
-### In-app updates
-
-- Download and install updates inside the app
-- GitHub / Gitee manual download fallback
-- Signed update verification
-- No silent background installation
-
-## Privacy
-
-LX Codex Meter does not read browser cookies, tokens, auth.json, Codex conversations, project files, or web page contents.
-
-Usage information is retrieved only through the local Codex App Server.
-
-Lifecycle detection uses process names and parent process relationships without reading full command lines, files, or session contents.
-
-No new usage retrieval or automatic update request is started while the main window is hidden.
-
-## Recommended download
-
-LX.Codex.Meter_0.6.14_x64-setup.exe
-
-## Alternative installer
-
-LX.Codex.Meter_0.6.14_x64_en-US.msi
+MSI 安装包同时提供给需要企业部署或 MSI 安装方式的用户。
