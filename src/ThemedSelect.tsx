@@ -120,7 +120,7 @@ export default function ThemedSelect({ ariaLabel, value, options, onChange }: Th
         >
           {options.map((option, index) => (
             <button
-              className={`themed-select-option ${index === selectedIndex ? 'is-selected' : ''} ${index === activeIndex ? 'is-active' : ''}`}
+              className={`themed-select-option ${index === activeIndex ? 'is-active' : ''}`}
               type="button"
               role="option"
               id={`${listboxId}-option-${index}`}

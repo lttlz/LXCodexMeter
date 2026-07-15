@@ -204,6 +204,8 @@ button { -webkit-app-region: no-drag; }
   min-width: 0;
 }
 .settings .themed-select-button {
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
   min-width: 0;
   min-height: 27px;
@@ -218,10 +220,12 @@ button { -webkit-app-region: no-drag; }
   background: var(--select-control-background);
   cursor: pointer;
   text-align: left;
+  -webkit-tap-highlight-color: transparent;
 }
 .settings .themed-select-button:hover,
 .settings .themed-select-button:active,
-.settings .themed-select-button:focus {
+.settings .themed-select-button:focus,
+.settings .themed-select-button[aria-expanded="true"] {
   border-color: var(--select-control-border);
   color: var(--select-control-text);
   background: var(--select-control-background);
@@ -269,12 +273,12 @@ button { -webkit-app-region: no-drag; }
   cursor: pointer;
   text-align: left;
 }
-.settings .themed-select-option.is-selected {
+.settings .themed-select-option[aria-selected="true"] {
   color: var(--select-selected-text);
   background: var(--select-selected-background);
 }
-.settings .themed-select-option.is-active:not(.is-selected),
-.settings .themed-select-option:hover:not(.is-selected) {
+.settings .themed-select-option.is-active:not([aria-selected="true"]),
+.settings .themed-select-option:hover:not([aria-selected="true"]) {
   color: var(--select-hover-text);
   background: var(--select-hover-background);
 }

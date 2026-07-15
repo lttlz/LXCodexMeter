@@ -138,9 +138,18 @@ test('theme classes own strip and themed select variables independent of system 
   assert.match(css, /\.meter\.theme-light\s*\{[^}]*color-scheme:\s*light;[^}]*--select-control-background:\s*#ffffff;[^}]*--select-menu-background:\s*#f2f2f2;[^}]*--select-option-text:\s*#172033;/s);
   assert.match(css, /@media \(prefers-color-scheme:\s*dark\)\s*\{\s*\.meter\.theme-system\s*\{[^}]*color-scheme:\s*dark;/s);
   assert.match(css, /@media \(prefers-color-scheme:\s*light\)\s*\{\s*\.meter\.theme-system\s*\{[^}]*color-scheme:\s*light;/s);
-  assert.match(css, /\.settings \.themed-select-button\s*\{[^}]*border:[^}]*var\(--select-control-border\);[^}]*color:\s*var\(--select-control-text\);[^}]*background:\s*var\(--select-control-background\)/s);
+  assert.match(css, /\.settings \.themed-select-button\s*\{[^}]*appearance:\s*none;[^}]*-webkit-appearance:\s*none;[^}]*border:[^}]*var\(--select-control-border\);[^}]*color:\s*var\(--select-control-text\);[^}]*background:\s*var\(--select-control-background\)/s);
+  const triggerStateBlock = css.match(/\.settings \.themed-select-button:hover,[^{]*\.settings \.themed-select-button\[aria-expanded="true"\]\s*\{([^}]*)\}/s)?.[1] ?? '';
+  assert.match(triggerStateBlock, /border-color:\s*var\(--select-control-border\)/);
+  assert.match(triggerStateBlock, /color:\s*var\(--select-control-text\)/);
+  assert.match(triggerStateBlock, /background:\s*var\(--select-control-background\)/);
+  assert.match(triggerStateBlock, /outline:\s*none/);
+  assert.match(triggerStateBlock, /box-shadow:\s*none/);
+  assert.match(triggerStateBlock, /filter:\s*none/);
+  assert.doesNotMatch(triggerStateBlock, /select-selected|active-background|#1677ff/i);
   assert.match(css, /\.settings \.themed-select-button:focus-visible\s*\{[^}]*border-color:\s*var\(--select-control-border\);[^}]*box-shadow:\s*none/s);
-  assert.match(css, /\.settings \.themed-select-option\.is-selected\s*\{[^}]*color:\s*var\(--select-selected-text\);[^}]*background:\s*var\(--select-selected-background\)/s);
+  assert.match(css, /\.settings \.themed-select-option\[aria-selected="true"\]\s*\{[^}]*color:\s*var\(--select-selected-text\);[^}]*background:\s*var\(--select-selected-background\)/s);
+  assert.equal((css.match(/background:\s*var\(--select-selected-background\)/g) ?? []).length, 1);
   assert.match(css, /\.confirm-overlay\s*\{[^}]*background:\s*var\(--overlay-background\)/s);
 });
 
