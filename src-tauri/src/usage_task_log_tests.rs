@@ -39,6 +39,8 @@ mod tests {
             duration_seconds: 0,
             weekly_consumed_percent: Some(1.0),
             five_hour_consumed_percent: Some(1.0),
+            end_weekly_remaining_percent: Some(79.0),
+            end_five_hour_remaining_percent: Some(59.0),
             record_mode: "automatic".to_string(),
             is_complete: true,
             is_estimated: false,
@@ -143,6 +145,65 @@ mod tests {
         assert!(tasks[0].is_active);
         assert!((tasks[0].task.weekly_consumed_percent.unwrap() - 4.0).abs() < 0.0001);
         assert!((tasks[0].task.five_hour_consumed_percent.unwrap() - 7.0).abs() < 0.0001);
+        assert_eq!(tasks[0].task.end_weekly_remaining_percent, Some(76.0));
+        assert_eq!(tasks[0].task.end_five_hour_remaining_percent, Some(53.0));
+    }
+
+    #[test]
+    fn active_balance_tracks_latest_snapshot_without_new_consumption() {
+        let mut store = store();
+        store
+            .record_snapshot(snapshot(1_000, 80.0, 60.0), true)
+            .unwrap();
+        store
+            .record_snapshot(snapshot(2_000, 77.0, 58.0), true)
+            .unwrap();
+        store
+            .record_snapshot(snapshot(3_000, 77.005, 58.005), true)
+            .unwrap();
+
+        let task = &store.view(3_000).tasks[0].task;
+        assert_eq!(task.end_weekly_remaining_percent, Some(77.005));
+        assert_eq!(task.end_five_hour_remaining_percent, Some(58.005));
+    }
+
+    #[test]
+    fn active_balance_tracks_latest_non_consuming_snapshot() {
+        let mut store = store();
+        store
+            .record_snapshot(snapshot(1_000, 80.0, 60.0), true)
+            .unwrap();
+        store
+            .record_snapshot(snapshot(2_000, 77.0, 58.0), true)
+            .unwrap();
+        store
+            .record_snapshot(snapshot(3_000, 74.0, 55.0), false)
+            .unwrap();
+
+        let task = &store.view(3_000).tasks[0].task;
+        assert_eq!(task.weekly_consumed_percent, Some(3.0));
+        assert_eq!(task.five_hour_consumed_percent, Some(2.0));
+        assert_eq!(task.end_weekly_remaining_percent, Some(74.0));
+        assert_eq!(task.end_five_hour_remaining_percent, Some(55.0));
+    }
+
+    #[test]
+    fn completed_task_keeps_its_stored_end_balance() {
+        let mut store = store();
+        store
+            .record_snapshot(snapshot(1_000, 80.0, 60.0), true)
+            .unwrap();
+        store
+            .record_snapshot(snapshot(2_000, 77.0, 58.0), true)
+            .unwrap();
+        store.close_idle_task(2_000 + IDLE_TIMEOUT_MS).unwrap();
+        store
+            .record_snapshot(snapshot(2_000 + IDLE_TIMEOUT_MS + 1_000, 70.0, 50.0), true)
+            .unwrap();
+
+        let task = &store.view(2_000 + IDLE_TIMEOUT_MS + 1_000).tasks[0].task;
+        assert_eq!(task.end_weekly_remaining_percent, Some(77.0));
+        assert_eq!(task.end_five_hour_remaining_percent, Some(58.0));
     }
 
     #[test]
@@ -203,6 +264,13 @@ mod tests {
     #[test]
     fn clear_history_keeps_active_task_and_baseline() {
         let mut store = store();
+        let preferences = UsageLogPreferences {
+            weekly_filter: "all".to_string(),
+            custom_threshold: 2.5,
+            time_filter: "7d".to_string(),
+            sort_mode: "duration".to_string(),
+        };
+        store.save_preferences(preferences.clone()).unwrap();
         store
             .record_snapshot(snapshot(1_000, 80.0, 60.0), true)
             .unwrap();
@@ -214,6 +282,27 @@ mod tests {
         assert_eq!(view.tasks.len(), 1);
         assert!(view.tasks[0].is_active);
         assert!(store.data.last_snapshot.is_some());
+        assert_eq!(view.preferences, preferences);
+    }
+
+    #[test]
+    fn delete_removes_only_the_requested_historical_task() {
+        let mut store = store();
+        store.data.tasks = vec![completed_task(1), completed_task(2)];
+        store
+            .record_snapshot(snapshot(1_000, 80.0, 60.0), true)
+            .unwrap();
+        store
+            .record_snapshot(snapshot(2_000, 79.0, 59.0), true)
+            .unwrap();
+
+        assert!(store.delete_task("task-1").unwrap());
+        assert!(!store.delete_task("task-1").unwrap());
+        assert!(!store.delete_task("task-2000-3").unwrap());
+        let view = store.view(2_000);
+        assert_eq!(view.tasks.len(), 2);
+        assert_eq!(view.tasks[0].task.id, "task-2");
+        assert!(view.tasks[1].is_active);
     }
 
     #[test]
@@ -253,6 +342,8 @@ mod tests {
                 last_observed_at_ms: 2_500,
                 weekly_consumed_percent: Some(2.0),
                 five_hour_consumed_percent: Some(3.0),
+                end_weekly_remaining_percent: None,
+                end_five_hour_remaining_percent: None,
                 created_at_ms: 1_000,
                 updated_at_ms: 2_000,
             }),
@@ -270,6 +361,50 @@ mod tests {
         assert!(!migrated.data.tasks[1].is_complete);
         assert!(migrated.data.tasks[1].is_estimated);
         assert!(migrated.warning.is_some());
+    }
+
+    #[test]
+    fn version_two_upgrade_keeps_baseline_and_missing_balances_are_null() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("lxcodexmeter-v2-{nonce}.json"));
+        let legacy_json = r#"{
+          "schemaVersion": 2,
+          "lastSnapshot": {
+            "capturedAtMs": 1000,
+            "weeklyRemainingPercent": 80.0,
+            "fiveHourRemainingPercent": 60.0
+          },
+          "activeTask": null,
+          "tasks": [{
+            "id": "v2-task",
+            "startedAtMs": 1000,
+            "endedAtMs": 2000,
+            "durationSeconds": 1,
+            "weeklyConsumedPercent": 1.0,
+            "fiveHourConsumedPercent": 2.0,
+            "recordMode": "automatic",
+            "isComplete": true,
+            "isEstimated": false,
+            "createdAtMs": 1000,
+            "updatedAtMs": 2000
+          }],
+          "preferences": {
+            "weeklyFilter": "gte3",
+            "customThreshold": 3.0,
+            "timeFilter": "30d",
+            "sortMode": "latest"
+          }
+        }"#;
+        fs::write(&path, legacy_json).unwrap();
+
+        let migrated = UsageTaskStore::load(path, 3_000);
+        assert_eq!(migrated.data.schema_version, SCHEMA_VERSION);
+        assert!(migrated.data.last_snapshot.is_some());
+        assert_eq!(migrated.data.tasks[0].end_weekly_remaining_percent, None);
+        assert_eq!(migrated.data.tasks[0].end_five_hour_remaining_percent, None);
     }
 
     #[test]

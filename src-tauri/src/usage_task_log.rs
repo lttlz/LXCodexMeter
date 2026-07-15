@@ -18,7 +18,7 @@ extern "system" {
     ) -> i32;
 }
 
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 const MAX_TASKS: usize = 10_000;
 const MIN_CONSUMPTION_PERCENT: f64 = 0.01;
 const RESET_INCREASE_PERCENT: f64 = 10.0;
@@ -41,6 +41,10 @@ pub struct UsageTask {
     pub duration_seconds: u64,
     pub weekly_consumed_percent: Option<f64>,
     pub five_hour_consumed_percent: Option<f64>,
+    #[serde(default)]
+    pub end_weekly_remaining_percent: Option<f64>,
+    #[serde(default)]
+    pub end_five_hour_remaining_percent: Option<f64>,
     pub record_mode: String,
     pub is_complete: bool,
     pub is_estimated: bool,
@@ -58,6 +62,10 @@ struct ActiveUsageTask {
     last_observed_at_ms: u64,
     weekly_consumed_percent: Option<f64>,
     five_hour_consumed_percent: Option<f64>,
+    #[serde(default)]
+    end_weekly_remaining_percent: Option<f64>,
+    #[serde(default)]
+    end_five_hour_remaining_percent: Option<f64>,
     created_at_ms: u64,
     updated_at_ms: u64,
 }
@@ -73,6 +81,8 @@ impl ActiveUsageTask {
                 duration_seconds: ended_at_ms.saturating_sub(self.started_at_ms) / 1_000,
                 weekly_consumed_percent: self.weekly_consumed_percent,
                 five_hour_consumed_percent: self.five_hour_consumed_percent,
+                end_weekly_remaining_percent: self.end_weekly_remaining_percent,
+                end_five_hour_remaining_percent: self.end_five_hour_remaining_percent,
                 record_mode: "automatic".to_string(),
                 is_complete: false,
                 is_estimated: false,
@@ -92,6 +102,8 @@ impl ActiveUsageTask {
             duration_seconds: ended_at_ms.saturating_sub(self.started_at_ms) / 1_000,
             weekly_consumed_percent: self.weekly_consumed_percent,
             five_hour_consumed_percent: self.five_hour_consumed_percent,
+            end_weekly_remaining_percent: self.end_weekly_remaining_percent,
+            end_five_hour_remaining_percent: self.end_five_hour_remaining_percent,
             record_mode: "automatic".to_string(),
             is_complete,
             is_estimated,
@@ -219,10 +231,12 @@ impl UsageTaskStore {
             UsageLogData::default()
         };
 
-        if data.schema_version < SCHEMA_VERSION {
+        if data.schema_version < 2 {
             data.schema_version = SCHEMA_VERSION;
             data.last_snapshot = None;
             warning = Some("消耗日志已升级，旧额度基准已安全失效".to_string());
+        } else if data.schema_version < SCHEMA_VERSION {
+            data.schema_version = SCHEMA_VERSION;
         }
 
         if let Some(active) = data.active_task.take() {
@@ -281,6 +295,12 @@ impl UsageTaskStore {
         };
 
         if !allow_consumption {
+            if let Some(active) = self.data.active_task.as_mut() {
+                active.last_observed_at_ms =
+                    current.captured_at_ms.max(active.last_observed_at_ms);
+                active.end_weekly_remaining_percent = current.weekly_remaining_percent;
+                active.end_five_hour_remaining_percent = current.five_hour_remaining_percent;
+            }
             self.data.last_snapshot = Some(replace_baselines(current));
             return self.persist();
         }
@@ -293,16 +313,26 @@ impl UsageTaskStore {
             previous.five_hour_remaining_percent,
             current.five_hour_remaining_percent,
         );
+        let end_weekly_remaining_percent = current.weekly_remaining_percent;
+        let end_five_hour_remaining_percent = current.five_hour_remaining_percent;
 
         if weekly.reset || five_hour.reset {
             self.finish_active(current.captured_at_ms, true, false);
         }
 
         if weekly.consumed > 0.0 || five_hour.consumed > 0.0 {
-            self.add_consumption(current.captured_at_ms, weekly, five_hour);
+            self.add_consumption(
+                current.captured_at_ms,
+                weekly,
+                five_hour,
+                end_weekly_remaining_percent,
+                end_five_hour_remaining_percent,
+            );
         }
         if let Some(active) = self.data.active_task.as_mut() {
             active.last_observed_at_ms = current.captured_at_ms.max(active.last_observed_at_ms);
+            active.end_weekly_remaining_percent = end_weekly_remaining_percent;
+            active.end_five_hour_remaining_percent = end_five_hour_remaining_percent;
         }
 
         self.data.last_snapshot = Some(UsageSnapshot {
@@ -389,6 +419,8 @@ impl UsageTaskStore {
         captured_at_ms: u64,
         weekly: QuotaChange,
         five_hour: QuotaChange,
+        end_weekly_remaining_percent: Option<f64>,
+        end_five_hour_remaining_percent: Option<f64>,
     ) {
         let task = self
             .data
@@ -400,6 +432,8 @@ impl UsageTaskStore {
                 last_observed_at_ms: captured_at_ms,
                 weekly_consumed_percent: weekly.available.then_some(0.0),
                 five_hour_consumed_percent: five_hour.available.then_some(0.0),
+                end_weekly_remaining_percent,
+                end_five_hour_remaining_percent,
                 created_at_ms: captured_at_ms,
                 updated_at_ms: captured_at_ms,
             });

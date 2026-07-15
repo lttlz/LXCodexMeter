@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import ConfirmDialog from './ConfirmDialog';
 import { tr } from './i18n';
-import { filterAndSortUsageTasks } from './usageLogUtils.js';
+import {
+  createUsageCsvRows,
+  filterAndSortUsageTasks,
+  formatUsageTimeRange,
+  usageCsvFileName,
+} from './usageLogUtils.js';
 import type {
   Language,
   UsageLogPreferences,
@@ -39,23 +45,9 @@ function formatDuration(seconds: number, lang: Language): string {
   return lang === 'zh' ? `${hours}小时${remainMinutes}分` : `${hours}h ${remainMinutes}m`;
 }
 
-function formatStartedAt(timestamp: number, lang: Language): string {
-  return new Date(timestamp).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-}
-
-function taskStatus(task: UsageTask, lang: Language): string {
-  if (task.isActive) return tr(lang, 'usageStatusActive');
-  if (!task.isComplete) return tr(lang, 'usageStatusIncomplete');
-  if (task.isEstimated) return tr(lang, 'usageStatusEstimated');
-  return tr(lang, 'usageStatusComplete');
-}
+type PendingConfirmation =
+  | { type: 'delete'; task: UsageTask }
+  | { type: 'clear' };
 
 export default function UsageLogPage({ lang }: { lang: Language }) {
   const t = useMemo(() => (key: string) => tr(lang, key), [lang]);
@@ -65,10 +57,16 @@ export default function UsageLogPage({ lang }: { lang: Language }) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const confirmBusyRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
+    setNotice('');
     try {
       const next = await invoke<UsageLogView>('get_usage_log');
       setView(next);
@@ -134,32 +132,60 @@ export default function UsageLogPage({ lang }: { lang: Language }) {
       longest,
     };
   }, [filtered]);
+  const historicalCount = useMemo(
+    () => (view?.tasks ?? []).filter((task) => !task.isActive).length,
+    [view?.tasks],
+  );
 
-  const deleteTask = useCallback(async (task: UsageTask) => {
-    if (task.isActive) return;
+  const exportCsv = useCallback(async () => {
+    if (filtered.length === 0 || exporting) return;
+    setExporting(true);
+    setError('');
+    setNotice('');
     try {
-      await invoke('delete_usage_task', { id: task.id });
-      setView((current) => current ? {
-        ...current,
-        tasks: current.tasks.filter((item) => item.id !== task.id),
-      } : current);
+      const saved = await invoke<boolean>('export_usage_csv', {
+        rows: createUsageCsvRows(filtered),
+        language: lang,
+        fileName: usageCsvFileName(lang),
+      });
+      if (saved) setNotice(t('usageExportSuccess'));
     } catch {
-      setError(t('usageDeleteFailed'));
+      setError(t('usageExportFailed'));
+    } finally {
+      setExporting(false);
     }
-  }, [t]);
+  }, [exporting, filtered, lang, t]);
 
-  const clearHistory = useCallback(async () => {
-    if (!window.confirm(t('usageClearConfirm'))) return;
+  const confirmAction = useCallback(async () => {
+    if (!confirmation || confirmBusyRef.current) return;
+    confirmBusyRef.current = true;
+    setConfirmBusy(true);
+    setError('');
+    setNotice('');
     try {
-      await invoke('clear_usage_tasks');
-      setView((current) => current ? {
-        ...current,
-        tasks: current.tasks.filter((task) => task.isActive),
-      } : current);
+      if (confirmation.type === 'delete') {
+        const { task } = confirmation;
+        if (task.isActive) return;
+        await invoke('delete_usage_task', { id: task.id });
+        setView((current) => current ? {
+          ...current,
+          tasks: current.tasks.filter((item) => item.id !== task.id),
+        } : current);
+      } else {
+        await invoke('clear_usage_tasks');
+        setView((current) => current ? {
+          ...current,
+          tasks: current.tasks.filter((task) => task.isActive),
+        } : current);
+      }
+      setConfirmation(null);
     } catch {
-      setError(t('usageClearFailed'));
+      setError(t(confirmation.type === 'delete' ? 'usageDeleteFailed' : 'usageClearFailed'));
+    } finally {
+      confirmBusyRef.current = false;
+      setConfirmBusy(false);
     }
-  }, [t]);
+  }, [confirmation, t]);
 
   return (
     <section className="usage-log-page">
@@ -228,6 +254,7 @@ export default function UsageLogPage({ lang }: { lang: Language }) {
       </div>
 
       {(view?.warning || error) && <div className="usage-warning">{error || view?.warning}</div>}
+      {notice && <div className="usage-notice">{notice}</div>}
       {loading ? (
         <div className="usage-empty">{t('usageLoading')}</div>
       ) : filtered.length === 0 ? (
@@ -239,19 +266,22 @@ export default function UsageLogPage({ lang }: { lang: Language }) {
         <div className="usage-task-list">
           {filtered.slice(0, visibleCount).map((task) => (
             <article className="usage-task-row" key={task.id}>
-              <div className="usage-task-time">{formatStartedAt(task.startedAtMs, lang)}</div>
+              <div className="usage-task-time">{formatUsageTimeRange(task, {
+                time: t('usageTimeLabel'),
+                recording: t('usageRecording'),
+              })}</div>
               <button
                 className="usage-delete"
                 type="button"
                 disabled={task.isActive}
                 title={t('usageDelete')}
-                onClick={() => void deleteTask(task)}
+                onClick={() => setConfirmation({ type: 'delete', task })}
               >×</button>
               <dl>
                 <div><dt>{t('usageDuration')}</dt><dd>{formatDuration(task.durationSeconds, lang)}</dd></div>
                 <div className="usage-primary-value"><dt>{t('usageWeeklyConsumed')}</dt><dd>{formatPercent(task.weeklyConsumedPercent)}</dd></div>
                 <div><dt>{t('usageFiveHourConsumed')}</dt><dd>{formatPercent(task.fiveHourConsumedPercent)}</dd></div>
-                <div><dt>{t('usageStatus')}</dt><dd>{taskStatus(task, lang)}</dd></div>
+                <div><dt>{t('usageQuotaBalance')}</dt><dd>{t('usageWeekShort')} {formatPercent(task.endWeeklyRemainingPercent)} · 5h {formatPercent(task.endFiveHourRemainingPercent)}</dd></div>
               </dl>
             </article>
           ))}
@@ -265,9 +295,29 @@ export default function UsageLogPage({ lang }: { lang: Language }) {
 
       <div className="usage-management">
         <span>{t('usageManagement')}</span>
-        <button type="button" onClick={() => void load()}>{t('usageReload')}</button>
-        <button className="danger" type="button" onClick={() => void clearHistory()}>{t('usageClearAll')}</button>
+        <button type="button" disabled={loading} onClick={() => void load()}>{t('usageReload')}</button>
+        <button type="button" disabled={filtered.length === 0 || exporting} onClick={() => void exportCsv()}>
+          {exporting ? t('usageExporting') : t('usageExportCsv')}
+        </button>
+        <button className="danger" type="button" disabled={historicalCount === 0} onClick={() => setConfirmation({ type: 'clear' })}>{t('usageClearAll')}</button>
       </div>
+
+      {confirmation && <ConfirmDialog
+        title={t(confirmation.type === 'delete' ? 'usageDeleteConfirmTitle' : 'usageClearConfirmTitle')}
+        description={t(confirmation.type === 'delete' ? 'usageDeleteConfirmDescription' : 'usageClearConfirm')}
+        details={confirmation.type === 'delete' ? (
+          <>
+            <span>{formatUsageTimeRange(confirmation.task, { time: t('usageTimeLabel'), recording: t('usageRecording') })}</span>
+            <span>{t('usageWeeklyConsumed')}: {formatPercent(confirmation.task.weeklyConsumedPercent)}</span>
+          </>
+        ) : <span>{t('usageClearCount')}: {historicalCount}</span>}
+        confirmLabel={t(confirmation.type === 'delete' ? 'usageConfirmDelete' : 'usageConfirmClear')}
+        cancelLabel={t('cancel')}
+        loadingLabel={t('usageProcessing')}
+        busy={confirmBusy}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={() => void confirmAction()}
+      />}
     </section>
   );
 }

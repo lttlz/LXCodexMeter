@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { filterAndSortUsageTasks } from '../src/usageLogUtils.js';
+import {
+  createUsageCsvRows,
+  filterAndSortUsageTasks,
+  formatUsageTimeRange,
+  usageCsvFileName,
+} from '../src/usageLogUtils.js';
 
 const now = new Date('2026-07-15T12:00:00+08:00');
 
@@ -13,6 +18,8 @@ function task(id, weekly, startedAtMs = now.getTime(), durationSeconds = 60) {
     durationSeconds,
     weeklyConsumedPercent: weekly,
     fiveHourConsumedPercent: weekly === null ? null : weekly * 2,
+    endWeeklyRemainingPercent: weekly === null ? null : 95,
+    endFiveHourRemainingPercent: null,
     recordMode: 'automatic',
     isComplete: true,
     isEstimated: false,
@@ -75,6 +82,48 @@ test('unknown weekly usage is included only by the all filter and sorts last', (
   );
 });
 
+test('time ranges label same-day, cross-day, active, and English records explicitly', () => {
+  const start = new Date(2026, 6, 16, 1, 35).getTime();
+  const sameDay = { ...task('same', 3, start), endedAtMs: new Date(2026, 6, 16, 1, 44).getTime() };
+  const crossDay = { ...task('cross', 3, start), endedAtMs: new Date(2026, 6, 17, 2, 4).getTime() };
+  const active = { ...sameDay, isActive: true };
+  assert.equal(formatUsageTimeRange(sameDay, { time: '时间', recording: '记录中' }), '时间: 2026/07/16 01:35 - 01:44');
+  assert.equal(formatUsageTimeRange(crossDay, { time: '时间', recording: '记录中' }), '时间: 2026/07/16 01:35 - 2026/07/17 02:04');
+  assert.equal(formatUsageTimeRange(active, { time: '时间', recording: '记录中' }), '时间: 2026/07/16 01:35 - 记录中');
+  assert.equal(formatUsageTimeRange(sameDay, { time: 'Time', recording: 'Recording' }), 'Time: 2026/07/16 01:35 - 01:44');
+});
+
+test('CSV payload uses every filtered sorted row without the 100-card page limit', () => {
+  const tasks = Array.from({ length: 150 }, (_, index) => task(String(index), 3, now.getTime() - index));
+  const filtered = filterAndSortUsageTasks(tasks, preferences({ weeklyFilter: 'all' }), now);
+  const rows = createUsageCsvRows(filtered);
+  assert.equal(rows.length, 150);
+  assert.equal(rows[0].startTime, '2026/07/15 12:00');
+  assert.equal(rows[0].weeklyConsumedPercent, 3);
+  assert.equal(rows[0].endWeeklyRemainingPercent, 95);
+  assert.equal(rows[0].endFiveHourRemainingPercent, null);
+  assert.deepEqual(filtered.map((item) => item.id), tasks.map((item) => item.id));
+});
+
+test('active CSV rows leave the end time empty and filenames are localized', () => {
+  const active = { ...task('active', 3), isActive: true };
+  assert.equal(createUsageCsvRows([active])[0].endTime, null);
+  const stamp = new Date(2026, 6, 16, 9, 5);
+  assert.equal(usageCsvFileName('zh', stamp), 'LXCodexMeter_消耗日志_20260716_0905.csv');
+  assert.equal(usageCsvFileName('en', stamp), 'LXCodexMeter_usage_log_20260716_0905.csv');
+});
+
+test('usage cards show time and quota balance without a visible status field or window.confirm', () => {
+  const page = readFileSync(new URL('../src/UsageLogPage.tsx', import.meta.url), 'utf8');
+  assert.match(page, /formatUsageTimeRange/);
+  assert.match(page, /endWeeklyRemainingPercent/);
+  assert.match(page, /endFiveHourRemainingPercent/);
+  assert.doesNotMatch(page, /window\.confirm/);
+  assert.doesNotMatch(page, /t\('usageStatus'\)/);
+  assert.match(page, /createUsageCsvRows\(filtered\)/);
+  assert.match(page, /confirmBusyRef\.current/);
+});
+
 test('theme classes own strip text variables and explicit themes are independent of system media', () => {
   const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
   assert.match(css, /\.meter\.theme-light\s*\{[^}]*--strip-primary-text:/s);
@@ -82,6 +131,10 @@ test('theme classes own strip text variables and explicit themes are independent
   assert.match(css, /\.meter\.theme-system\s*\{[^}]*--strip-primary-text:/s);
   assert.match(css, /\.strip-lines\s*\{[^}]*color:\s*var\(--strip-primary-text\)/s);
   assert.match(css, /\.strip-lines span\s*\{[^}]*color:\s*var\(--strip-secondary-text\)/s);
+  assert.match(css, /\.meter\.theme-light\s*\{[^}]*--text-primary:/s);
+  assert.match(css, /\.meter\.theme-dark\s*\{[^}]*--text-primary:/s);
+  assert.match(css, /\.settings select option\s*\{[^}]*background:\s*var\(--control-background\)/s);
+  assert.match(css, /\.confirm-overlay\s*\{[^}]*background:\s*var\(--overlay-background\)/s);
 });
 
 test('quota UI reads normalized fields and keeps fixed semantic titles', () => {
@@ -100,4 +153,19 @@ test('close settings action follows the theme selector and precedes strip reset'
   const backToFloat = app.indexOf("{t('backToFloat')}", theme);
   assert.ok(theme >= 0 && close > theme && backToFloat > close);
   assert.equal(app.indexOf("{t('closeSettings')}", close + 1), -1);
+});
+
+test('runtime and package versions are consistently upgraded to 0.6.15', () => {
+  const expected = '0.6.15';
+  const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const packageLock = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8'));
+  const tauri = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
+  const cargo = readFileSync(new URL('../src-tauri/Cargo.toml', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  assert.equal(packageJson.version, expected);
+  assert.equal(packageLock.version, expected);
+  assert.equal(packageLock.packages[''].version, expected);
+  assert.equal(tauri.version, expected);
+  assert.match(cargo, /^version = "0\.6\.15"$/m);
+  assert.match(app, /APP_VERSION = '0\.6\.15'/);
 });

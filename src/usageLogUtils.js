@@ -39,3 +39,56 @@ export function filterAndSortUsageTasks(tasks, preferences, now = new Date()) {
       return right.startedAtMs - left.startedAtMs;
     });
 }
+
+function pad(value) {
+  return String(value).padStart(2, '0');
+}
+
+export function formatLocalDateTime(timestamp) {
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatLocalTime(timestamp) {
+  const date = new Date(timestamp);
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function isSameLocalDay(leftTimestamp, rightTimestamp) {
+  const left = new Date(leftTimestamp);
+  const right = new Date(rightTimestamp);
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
+}
+
+export function formatUsageTimeRange(task, labels) {
+  const start = formatLocalDateTime(task.startedAtMs);
+  const end = task.isActive
+    ? labels.recording
+    : isSameLocalDay(task.startedAtMs, task.endedAtMs)
+      ? formatLocalTime(task.endedAtMs)
+      : formatLocalDateTime(task.endedAtMs);
+  return `${labels.time}: ${start} - ${end}`;
+}
+
+export function createUsageCsvRows(tasks) {
+  return tasks.map((task) => ({
+    startTime: formatLocalDateTime(task.startedAtMs),
+    endTime: task.isActive ? null : formatLocalDateTime(task.endedAtMs),
+    durationSeconds: task.durationSeconds,
+    weeklyConsumedPercent: task.weeklyConsumedPercent,
+    fiveHourConsumedPercent: task.fiveHourConsumedPercent,
+    endWeeklyRemainingPercent: task.endWeeklyRemainingPercent,
+    endFiveHourRemainingPercent: task.endFiveHourRemainingPercent,
+    isEstimated: task.isEstimated,
+    isComplete: task.isComplete,
+  }));
+}
+
+export function usageCsvFileName(language, now = new Date()) {
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+  return language === 'zh'
+    ? `LXCodexMeter_消耗日志_${stamp}.csv`
+    : `LXCodexMeter_usage_log_${stamp}.csv`;
+}

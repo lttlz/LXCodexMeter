@@ -65,12 +65,26 @@ export type UsageTask = {
   durationSeconds: number;
   weeklyConsumedPercent: number | null;
   fiveHourConsumedPercent: number | null;
+  endWeeklyRemainingPercent: number | null;
+  endFiveHourRemainingPercent: number | null;
   recordMode: 'automatic' | string;
   isComplete: boolean;
   isEstimated: boolean;
   createdAtMs: number;
   updatedAtMs: number;
   isActive: boolean;
+};
+
+export type UsageCsvRow = {
+  startTime: string;
+  endTime: string | null;
+  durationSeconds: number;
+  weeklyConsumedPercent: number | null;
+  fiveHourConsumedPercent: number | null;
+  endWeeklyRemainingPercent: number | null;
+  endFiveHourRemainingPercent: number | null;
+  isEstimated: boolean;
+  isComplete: boolean;
 };
 
 export type UsageLogView = {

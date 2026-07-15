@@ -1,6 +1,6 @@
 [package]
 name = "lx-codex-meter"
-version = "0.6.14"
+version = "0.6.15"
 description = "Local-only Codex quota meter with tray and floating window"
 authors = ["lttlz"]
 edition = "2021"
@@ -18,6 +18,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-autostart = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["process", "io-util", "time", "macros"] }
+tokio = { version = "1", features = ["process", "io-util", "time", "macros", "rt"] }
+rfd = { version = "0.15", default-features = false }
 windows = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }

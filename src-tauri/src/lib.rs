@@ -1,5 +1,6 @@
 mod meter;
 mod quota;
+mod usage_csv;
 mod usage_runtime;
 mod usage_task_log;
 
@@ -22,6 +23,7 @@ use tauri::{
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_updater::UpdaterExt;
 use usage_runtime::UsageRuntime;
+use usage_csv::UsageCsvRow;
 use usage_task_log::{UsageLogPreferences, UsageLogView};
 
 /// Shared flag: set when the user manually shows/maintains the window after
@@ -159,6 +161,15 @@ fn delete_usage_task(
 #[tauri::command]
 fn clear_usage_tasks(usage_runtime: tauri::State<'_, UsageRuntime>) -> Result<(), String> {
     usage_runtime.clear_history()
+}
+
+#[tauri::command]
+async fn export_usage_csv(
+    rows: Vec<UsageCsvRow>,
+    language: String,
+    file_name: String,
+) -> Result<bool, String> {
+    usage_csv::export_usage_csv(rows, language, file_name).await
 }
 
 #[tauri::command]
@@ -812,6 +823,7 @@ pub fn run() {
             get_usage_log,
             delete_usage_task,
             clear_usage_tasks,
+            export_usage_csv,
             save_usage_log_preferences,
             load_config,
             save_config,

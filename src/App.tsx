@@ -13,7 +13,7 @@ import wechatQr from './assets/support/wechat-qr.png';
 import logoImg from './assets/logo.png';
 
 const APP_NAME = 'LX Codex Meter';
-const APP_VERSION = '0.6.14';
+const APP_VERSION = '0.6.15';
 const APP_AUTHOR = 'lttlz';
 const GITHUB_URL = 'https://github.com/lttlz/LXCodexMeter';
 const GITEE_URL = 'https://gitee.com/lttlz/LXCodexMeter';
