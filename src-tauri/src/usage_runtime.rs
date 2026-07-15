@@ -1,5 +1,5 @@
 use crate::{
-    meter::{read_status, CodexMeterStatus, LimitWindow},
+    meter::{read_status, CodexMeterStatus},
     usage_task_log::{UsageLogPreferences, UsageLogView, UsageSnapshot, UsageTaskStore},
 };
 use std::{
@@ -91,13 +91,12 @@ impl UsageRuntime {
 
         let status = read_status(mode, client_text).await?;
         if status.ok {
-            if let Some(snapshot) = snapshot_from_status(&status) {
-                let allow_consumption = self.target_running() || allow_final_consumption;
-                if let Err(error) =
-                    self.with_store(|store| store.record_snapshot(snapshot, allow_consumption))
-                {
-                    self.set_warning(error);
-                }
+            let snapshot = snapshot_from_status(&status);
+            let allow_consumption = self.target_running() || allow_final_consumption;
+            if let Err(error) =
+                self.with_store(|store| store.record_snapshot(snapshot, allow_consumption))
+            {
+                self.set_warning(error);
             }
         }
         *self
@@ -190,52 +189,17 @@ impl UsageRuntime {
     }
 }
 
-fn snapshot_from_status(status: &CodexMeterStatus) -> Option<UsageSnapshot> {
-    let mut weekly = None;
-    let mut five_hour = None;
-    let mut unknown: Vec<&LimitWindow> = Vec::new();
-
-    for limit in [status.primary.as_ref(), status.secondary.as_ref()]
-        .into_iter()
-        .flatten()
-    {
-        match limit.window_duration_mins {
-            Some(minutes) if minutes <= 360 => five_hour = limit.remaining_percent,
-            Some(minutes) if minutes >= 7 * 24 * 60 => weekly = limit.remaining_percent,
-            _ => unknown.push(limit),
-        }
-    }
-
-    if five_hour.is_none() {
-        five_hour = status
-            .primary
-            .as_ref()
-            .and_then(|limit| limit.remaining_percent);
-    }
-    if weekly.is_none() {
-        weekly = status
-            .secondary
-            .as_ref()
-            .and_then(|limit| limit.remaining_percent);
-    }
-    if five_hour.is_none() && weekly.is_none() {
-        for limit in unknown {
-            if five_hour.is_none() {
-                five_hour = limit.remaining_percent;
-            } else if weekly.is_none() {
-                weekly = limit.remaining_percent;
-            }
-        }
-    }
-    if five_hour.is_none() && weekly.is_none() {
-        return None;
-    }
-
-    Some(UsageSnapshot {
+fn snapshot_from_status(status: &CodexMeterStatus) -> UsageSnapshot {
+    let weekly = status.weekly.as_ref().and_then(|limit| limit.remaining_percent);
+    let five_hour = status
+        .five_hour
+        .as_ref()
+        .and_then(|limit| limit.remaining_percent);
+    UsageSnapshot {
         captured_at_ms: status.updated_at_ms.min(u64::MAX as u128) as u64,
         weekly_remaining_percent: weekly,
         five_hour_remaining_percent: five_hour,
-    })
+    }
 }
 
 pub fn now_ms() -> u64 {
@@ -249,6 +213,7 @@ pub fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::meter::LimitWindow;
 
     fn limit(remaining: f64, duration: i64) -> LimitWindow {
         LimitWindow {
@@ -259,6 +224,8 @@ mod tests {
             resets_at: None,
             reset_text: None,
             reached_type: None,
+            semantic_id: None,
+            semantic_label: None,
         }
     }
 
@@ -272,12 +239,14 @@ mod tests {
             plan_type: None,
             primary: Some(limit(70.0, 300)),
             secondary: Some(limit(40.0, 10_080)),
+            five_hour: Some(limit(70.0, 300)),
+            weekly: Some(limit(40.0, 10_080)),
             credit_balance: None,
             credit_limit: None,
             reset_credits_available: None,
             updated_at_ms: 123,
         };
-        let snapshot = snapshot_from_status(&status).unwrap();
+        let snapshot = snapshot_from_status(&status);
         assert_eq!(snapshot.five_hour_remaining_percent, Some(70.0));
         assert_eq!(snapshot.weekly_remaining_percent, Some(40.0));
     }

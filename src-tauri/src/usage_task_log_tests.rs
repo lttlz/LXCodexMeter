@@ -19,14 +19,26 @@ mod tests {
         }
     }
 
+    fn optional_snapshot(
+        at: u64,
+        weekly: Option<f64>,
+        five_hour: Option<f64>,
+    ) -> UsageSnapshot {
+        UsageSnapshot {
+            captured_at_ms: at,
+            weekly_remaining_percent: weekly,
+            five_hour_remaining_percent: five_hour,
+        }
+    }
+
     fn completed_task(id: usize) -> UsageTask {
         UsageTask {
             id: format!("task-{id}"),
             started_at_ms: id as u64,
             ended_at_ms: id as u64 + 1,
             duration_seconds: 0,
-            weekly_consumed_percent: 1.0,
-            five_hour_consumed_percent: 1.0,
+            weekly_consumed_percent: Some(1.0),
+            five_hour_consumed_percent: Some(1.0),
             record_mode: "automatic".to_string(),
             is_complete: true,
             is_estimated: false,
@@ -45,6 +57,76 @@ mod tests {
     }
 
     #[test]
+    fn weekly_only_snapshot_never_creates_five_hour_consumption() {
+        let mut store = store();
+        store
+            .record_snapshot(optional_snapshot(1_000, Some(80.0), None), true)
+            .unwrap();
+        store
+            .record_snapshot(optional_snapshot(2_000, Some(77.0), None), true)
+            .unwrap();
+
+        let task = &store.view(2_000).tasks[0].task;
+        assert_eq!(task.weekly_consumed_percent, Some(3.0));
+        assert_eq!(task.five_hour_consumed_percent, None);
+    }
+
+    #[test]
+    fn missing_quota_clears_baseline_and_recovery_only_rebuilds_it() {
+        let mut store = store();
+        store
+            .record_snapshot(optional_snapshot(1_000, Some(80.0), Some(60.0)), true)
+            .unwrap();
+        store
+            .record_snapshot(optional_snapshot(2_000, Some(79.0), None), true)
+            .unwrap();
+        store
+            .record_snapshot(optional_snapshot(3_000, Some(78.0), Some(55.0)), true)
+            .unwrap();
+
+        let recovered = &store.view(3_000).tasks[0].task;
+        assert_eq!(recovered.weekly_consumed_percent, Some(2.0));
+        assert_eq!(recovered.five_hour_consumed_percent, Some(0.0));
+
+        store
+            .record_snapshot(optional_snapshot(4_000, Some(77.0), Some(53.0)), true)
+            .unwrap();
+        let next = &store.view(4_000).tasks[0].task;
+        assert_eq!(next.weekly_consumed_percent, Some(3.0));
+        assert_eq!(next.five_hour_consumed_percent, Some(2.0));
+    }
+
+    #[test]
+    fn weekly_recovery_does_not_overwrite_five_hour_baseline() {
+        let mut store = store();
+        store
+            .record_snapshot(optional_snapshot(1_000, None, Some(60.0)), true)
+            .unwrap();
+        store
+            .record_snapshot(optional_snapshot(2_000, Some(80.0), Some(58.0)), true)
+            .unwrap();
+
+        let task = &store.view(2_000).tasks[0].task;
+        assert_eq!(task.weekly_consumed_percent, Some(0.0));
+        assert_eq!(task.five_hour_consumed_percent, Some(2.0));
+    }
+
+    #[test]
+    fn both_missing_then_recovering_rebuilds_both_baselines() {
+        let mut store = store();
+        store
+            .record_snapshot(optional_snapshot(1_000, Some(80.0), Some(60.0)), true)
+            .unwrap();
+        store
+            .record_snapshot(optional_snapshot(2_000, None, None), true)
+            .unwrap();
+        store
+            .record_snapshot(optional_snapshot(3_000, Some(70.0), Some(50.0)), true)
+            .unwrap();
+        assert!(store.view(3_000).tasks.is_empty());
+    }
+
+    #[test]
     fn positive_deltas_create_and_accumulate_one_task() {
         let mut store = store();
         store
@@ -59,8 +141,8 @@ mod tests {
         let tasks = store.view(3_000).tasks;
         assert_eq!(tasks.len(), 1);
         assert!(tasks[0].is_active);
-        assert!((tasks[0].task.weekly_consumed_percent - 4.0).abs() < 0.0001);
-        assert!((tasks[0].task.five_hour_consumed_percent - 7.0).abs() < 0.0001);
+        assert!((tasks[0].task.weekly_consumed_percent.unwrap() - 4.0).abs() < 0.0001);
+        assert!((tasks[0].task.five_hour_consumed_percent.unwrap() - 7.0).abs() < 0.0001);
     }
 
     #[test]
@@ -77,8 +159,8 @@ mod tests {
             .record_snapshot(snapshot(3_000, 99.0, 49.995), true)
             .unwrap();
         let task = &store.view(3_000).tasks[0].task;
-        assert!((task.weekly_consumed_percent - 1.0).abs() < 0.0001);
-        assert!(task.five_hour_consumed_percent >= 0.0);
+        assert!((task.weekly_consumed_percent.unwrap() - 1.0).abs() < 0.0001);
+        assert!(task.five_hour_consumed_percent.unwrap() >= 0.0);
     }
 
     #[test]
@@ -96,7 +178,7 @@ mod tests {
         let tasks = store.view(3_000).tasks;
         assert_eq!(tasks.len(), 1);
         assert!(!tasks[0].is_active);
-        assert_eq!(tasks[0].task.weekly_consumed_percent, 3.0);
+        assert_eq!(tasks[0].task.weekly_consumed_percent, Some(3.0));
     }
 
     #[test]
@@ -152,6 +234,42 @@ mod tests {
         assert!(!tasks[0].is_active);
         assert!(!tasks[0].task.is_complete);
         assert!(tasks[0].task.is_estimated);
+    }
+
+    #[test]
+    fn legacy_schema_preserves_history_closes_active_and_drops_slot_baseline() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("lxcodexmeter-legacy-{nonce}.json"));
+        let legacy = UsageLogData {
+            schema_version: 1,
+            last_snapshot: Some(snapshot(1_000, 80.0, 60.0)),
+            active_task: Some(ActiveUsageTask {
+                id: "legacy-active".to_string(),
+                started_at_ms: 1_000,
+                last_activity_at_ms: 2_000,
+                last_observed_at_ms: 2_500,
+                weekly_consumed_percent: Some(2.0),
+                five_hour_consumed_percent: Some(3.0),
+                created_at_ms: 1_000,
+                updated_at_ms: 2_000,
+            }),
+            tasks: vec![completed_task(1)],
+            preferences: UsageLogPreferences::default(),
+        };
+        fs::write(&path, serde_json::to_vec_pretty(&legacy).unwrap()).unwrap();
+
+        let migrated = UsageTaskStore::load(path, 3_000);
+        assert_eq!(migrated.data.schema_version, SCHEMA_VERSION);
+        assert!(migrated.data.last_snapshot.is_none());
+        assert!(migrated.data.active_task.is_none());
+        assert_eq!(migrated.data.tasks.len(), 2);
+        assert!(migrated.data.tasks[0].is_complete);
+        assert!(!migrated.data.tasks[1].is_complete);
+        assert!(migrated.data.tasks[1].is_estimated);
+        assert!(migrated.warning.is_some());
     }
 
     #[test]

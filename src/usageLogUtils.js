@@ -1,6 +1,6 @@
 function weeklyThreshold(preferences) {
   switch (preferences.weeklyFilter) {
-    case 'all': return 0;
+    case 'all': return null;
     case 'gte1': return 1;
     case 'gte5': return 5;
     case 'custom': return preferences.customThreshold;
@@ -21,11 +21,15 @@ export function filterAndSortUsageTasks(tasks, preferences, now = new Date()) {
   const threshold = weeklyThreshold(preferences);
   const cutoff = timeCutoff(preferences.timeFilter, now);
   return tasks
-    .filter((task) => task.weeklyConsumedPercent + Number.EPSILON >= threshold)
+    .filter((task) => threshold === null || (
+      typeof task.weeklyConsumedPercent === 'number'
+      && task.weeklyConsumedPercent + Number.EPSILON >= threshold
+    ))
     .filter((task) => task.startedAtMs >= cutoff)
     .sort((left, right) => {
       if (preferences.sortMode === 'weekly') {
-        return right.weeklyConsumedPercent - left.weeklyConsumedPercent
+        return (right.weeklyConsumedPercent ?? Number.NEGATIVE_INFINITY)
+          - (left.weeklyConsumedPercent ?? Number.NEGATIVE_INFINITY)
           || right.startedAtMs - left.startedAtMs;
       }
       if (preferences.sortMode === 'duration') {

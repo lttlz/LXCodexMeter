@@ -18,7 +18,7 @@ extern "system" {
     ) -> i32;
 }
 
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 const MAX_TASKS: usize = 10_000;
 const MIN_CONSUMPTION_PERCENT: f64 = 0.01;
 const RESET_INCREASE_PERCENT: f64 = 10.0;
@@ -39,8 +39,8 @@ pub struct UsageTask {
     pub started_at_ms: u64,
     pub ended_at_ms: u64,
     pub duration_seconds: u64,
-    pub weekly_consumed_percent: f64,
-    pub five_hour_consumed_percent: f64,
+    pub weekly_consumed_percent: Option<f64>,
+    pub five_hour_consumed_percent: Option<f64>,
     pub record_mode: String,
     pub is_complete: bool,
     pub is_estimated: bool,
@@ -56,8 +56,8 @@ struct ActiveUsageTask {
     last_activity_at_ms: u64,
     #[serde(default)]
     last_observed_at_ms: u64,
-    weekly_consumed_percent: f64,
-    five_hour_consumed_percent: f64,
+    weekly_consumed_percent: Option<f64>,
+    five_hour_consumed_percent: Option<f64>,
     created_at_ms: u64,
     updated_at_ms: u64,
 }
@@ -145,7 +145,7 @@ impl UsageLogPreferences {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UsageLogData {
-    #[serde(default = "schema_version")]
+    #[serde(default = "legacy_schema_version")]
     schema_version: u32,
     #[serde(default)]
     last_snapshot: Option<UsageSnapshot>,
@@ -157,8 +157,8 @@ struct UsageLogData {
     preferences: UsageLogPreferences,
 }
 
-fn schema_version() -> u32 {
-    SCHEMA_VERSION
+fn legacy_schema_version() -> u32 {
+    1
 }
 
 impl Default for UsageLogData {
@@ -219,6 +219,12 @@ impl UsageTaskStore {
             UsageLogData::default()
         };
 
+        if data.schema_version < SCHEMA_VERSION {
+            data.schema_version = SCHEMA_VERSION;
+            data.last_snapshot = None;
+            warning = Some("消耗日志已升级，旧额度基准已安全失效".to_string());
+        }
+
         if let Some(active) = data.active_task.take() {
             let ended_at_ms = active
                 .last_observed_at_ms
@@ -275,7 +281,7 @@ impl UsageTaskStore {
         };
 
         if !allow_consumption {
-            self.data.last_snapshot = Some(merge_available(previous, current));
+            self.data.last_snapshot = Some(replace_baselines(current));
             return self.persist();
         }
 
@@ -292,10 +298,8 @@ impl UsageTaskStore {
             self.finish_active(current.captured_at_ms, true, false);
         }
 
-        let weekly_consumed = weekly.consumed;
-        let five_hour_consumed = five_hour.consumed;
-        if weekly_consumed > 0.0 || five_hour_consumed > 0.0 {
-            self.add_consumption(current.captured_at_ms, weekly_consumed, five_hour_consumed);
+        if weekly.consumed > 0.0 || five_hour.consumed > 0.0 {
+            self.add_consumption(current.captured_at_ms, weekly, five_hour);
         }
         if let Some(active) = self.data.active_task.as_mut() {
             active.last_observed_at_ms = current.captured_at_ms.max(active.last_observed_at_ms);
@@ -380,7 +384,12 @@ impl UsageTaskStore {
         self.persist()
     }
 
-    fn add_consumption(&mut self, captured_at_ms: u64, weekly: f64, five_hour: f64) {
+    fn add_consumption(
+        &mut self,
+        captured_at_ms: u64,
+        weekly: QuotaChange,
+        five_hour: QuotaChange,
+    ) {
         let task = self
             .data
             .active_task
@@ -389,13 +398,17 @@ impl UsageTaskStore {
                 started_at_ms: captured_at_ms,
                 last_activity_at_ms: captured_at_ms,
                 last_observed_at_ms: captured_at_ms,
-                weekly_consumed_percent: 0.0,
-                five_hour_consumed_percent: 0.0,
+                weekly_consumed_percent: weekly.available.then_some(0.0),
+                five_hour_consumed_percent: five_hour.available.then_some(0.0),
                 created_at_ms: captured_at_ms,
                 updated_at_ms: captured_at_ms,
             });
-        task.weekly_consumed_percent += weekly;
-        task.five_hour_consumed_percent += five_hour;
+        if weekly.available {
+            *task.weekly_consumed_percent.get_or_insert(0.0) += weekly.consumed;
+        }
+        if five_hour.available {
+            *task.five_hour_consumed_percent.get_or_insert(0.0) += five_hour.consumed;
+        }
         task.last_activity_at_ms = captured_at_ms.max(task.last_activity_at_ms);
         task.updated_at_ms = captured_at_ms.max(task.updated_at_ms);
     }
@@ -428,14 +441,26 @@ struct QuotaChange {
     consumed: f64,
     reset: bool,
     next_baseline: Option<f64>,
+    available: bool,
 }
 
 fn quota_change(previous: Option<f64>, current: Option<f64>) -> QuotaChange {
-    let (Some(previous), Some(current)) = (valid_percent(previous), valid_percent(current)) else {
+    let previous = valid_percent(previous);
+    let current = valid_percent(current);
+    let Some(current) = current else {
         return QuotaChange {
             consumed: 0.0,
             reset: false,
-            next_baseline: current.or(previous),
+            next_baseline: None,
+            available: false,
+        };
+    };
+    let Some(previous) = previous else {
+        return QuotaChange {
+            consumed: 0.0,
+            reset: false,
+            next_baseline: Some(current),
+            available: true,
         };
     };
     let decrease = previous - current;
@@ -444,6 +469,7 @@ fn quota_change(previous: Option<f64>, current: Option<f64>) -> QuotaChange {
             consumed: decrease.max(0.0),
             reset: false,
             next_baseline: Some(current),
+            available: true,
         };
     }
     let increase = current - previous;
@@ -452,6 +478,7 @@ fn quota_change(previous: Option<f64>, current: Option<f64>) -> QuotaChange {
         consumed: 0.0,
         reset,
         next_baseline: Some(if reset { current } else { previous }),
+        available: true,
     }
 }
 
@@ -459,15 +486,11 @@ fn valid_percent(value: Option<f64>) -> Option<f64> {
     value.filter(|value| value.is_finite() && (0.0..=100.0).contains(value))
 }
 
-fn merge_available(previous: UsageSnapshot, current: UsageSnapshot) -> UsageSnapshot {
+fn replace_baselines(current: UsageSnapshot) -> UsageSnapshot {
     UsageSnapshot {
         captured_at_ms: current.captured_at_ms,
-        weekly_remaining_percent: current
-            .weekly_remaining_percent
-            .or(previous.weekly_remaining_percent),
-        five_hour_remaining_percent: current
-            .five_hour_remaining_percent
-            .or(previous.five_hour_remaining_percent),
+        weekly_remaining_percent: current.weekly_remaining_percent,
+        five_hour_remaining_percent: current.five_hour_remaining_percent,
     }
 }
 

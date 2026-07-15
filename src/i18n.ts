@@ -9,7 +9,7 @@ const zh: Dict = {
   loading: '正在读取 Codex 额度…',
   failed: '读取失败',
 
-  primary: '主额度',
+  primary: '5h',
   secondary: '周额度',
   credits: 'Credits',
   used: '用',
@@ -134,7 +134,7 @@ const en: Dict = {
   loading: 'Reading Codex usage…',
   failed: 'Failed to read',
 
-  primary: 'Primary',
+  primary: '5h',
   secondary: 'Wk',
   credits: 'Credits',
   used: 'U',

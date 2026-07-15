@@ -20,6 +20,8 @@ export type CodexMeterStatus = {
   plan_type: string | null;
   primary: LimitWindow | null;
   secondary: LimitWindow | null;
+  five_hour: LimitWindow | null;
+  weekly: LimitWindow | null;
   credit_balance: number | null;
   credit_limit: number | null;
   reset_credits_available: number | null;
@@ -61,8 +63,8 @@ export type UsageTask = {
   startedAtMs: number;
   endedAtMs: number;
   durationSeconds: number;
-  weeklyConsumedPercent: number;
-  fiveHourConsumedPercent: number;
+  weeklyConsumedPercent: number | null;
+  fiveHourConsumedPercent: number | null;
   recordMode: 'automatic' | string;
   isComplete: boolean;
   isEstimated: boolean;

@@ -155,28 +155,16 @@ function pct(n: number | null): string {
   return `${Math.max(0, Math.min(100, Math.round(n)))}%`;
 }
 
-function limitTitle(limit: LimitWindow | null, fallback: string): string {
-  if (!limit) return fallback;
-  const mins = limit.window_duration_mins;
-  if (mins === 300) return '5h';
-  if (mins === 10080) return fallback;
-  if (mins === 60) return '1h';
-  if (mins === 15) return '15m';
-  if (mins && mins > 60 && mins < 1440) return `${Math.round(mins / 60)}h`;
-  if (mins && mins >= 1440) return `${Math.round(mins / 1440)}d`;
-  return limit.label || fallback;
-}
-
 type TFunc = (key: string) => string;
 
 function LimitRow({
   limit,
-  fallback,
+  title,
   resetDateMode = 'auto',
   t,
 }: {
   limit: LimitWindow | null;
-  fallback: string;
+  title: string;
   resetDateMode?: 'auto' | 'date' | 'time';
   t: TFunc;
 }) {
@@ -184,7 +172,7 @@ function LimitRow({
   const used = limit?.used_percent ?? null;
   return (
     <div className="row">
-      <span className="label">{limitTitle(limit, fallback)}</span>
+      <span className="label">{title}</span>
       <span className="value">{pct(remaining)}</span>
       <span className="sub">{t('used')} {pct(used)} · {t('resetLabel')} {formatReset(limit?.resets_at ?? null, limit?.reset_text, resetDateMode, t('unknown'))}</span>
     </div>
@@ -406,6 +394,8 @@ export default function App() {
         plan_type: null,
         primary: null,
         secondary: null,
+        five_hour: null,
+        weekly: null,
         credit_balance: null,
         credit_limit: null,
         reset_credits_available: null,
@@ -646,12 +636,12 @@ export default function App() {
             <div className="strip-drag" onMouseDown={(event) => startWindowDrag(event)}>
               <div className="strip-lines">
                 <div>
-                  <b>{t('strip5h')}</b>: {pct(status?.primary?.remaining_percent ?? null)} <span>{t('stripWeek')}</span>: {pct(status?.secondary?.remaining_percent ?? null)} <span>{t('stripVoucher')}</span>: {status?.reset_credits_available ?? 0}
+                  <b>{t('strip5h')}</b>: {pct(status?.five_hour?.remaining_percent ?? null)} <span>{t('stripWeek')}</span>: {pct(status?.weekly?.remaining_percent ?? null)} <span>{t('stripVoucher')}</span>: {status?.reset_credits_available ?? 0}
                   {config.show_reset_time && <span>{t('stripData')}</span>}
                   {config.show_reset_time && `: ${formatUpdated(status?.updated_at_ms ?? 0) || '--'}`}
                 </div>
                 <div>
-                  <b>{t('stripReset')}</b>: {formatReset(status?.primary?.resets_at ?? null, status?.primary?.reset_text, 'auto', t('unknown'))} <span>{t('stripWeek')}</span>: {formatReset(status?.secondary?.resets_at ?? null, status?.secondary?.reset_text, 'date', t('unknown'))}
+                  <b>{t('stripReset')}</b>: {formatReset(status?.five_hour?.resets_at ?? null, status?.five_hour?.reset_text, 'auto', t('unknown'))} <span>{t('stripWeek')}</span>: {formatReset(status?.weekly?.resets_at ?? null, status?.weekly?.reset_text, 'date', t('unknown'))}
                   {config.show_reset_time && <span>{t('stripCredits')}</span>}
                   {config.show_reset_time && `: ${status?.credit_balance ?? '--'}`}
                 </div>
@@ -706,8 +696,8 @@ export default function App() {
             <div className="message drag-zone" onMouseDown={(event) => startWindowDrag(event)}>{t('loading')}</div>
           ) : status.ok ? (
             <div className="content drag-zone" onMouseDown={(event) => startWindowDrag(event)}>
-              <LimitRow limit={status.primary} fallback={t('primary')} resetDateMode="auto" t={t} />
-              <LimitRow limit={status.secondary} fallback={t('secondary')} resetDateMode="date" t={t} />
+              <LimitRow limit={status.five_hour} title={t('strip5h')} resetDateMode="auto" t={t} />
+              <LimitRow limit={status.weekly} title={t('secondary')} resetDateMode="date" t={t} />
               <div className="row">
                 <span className="label">{t('credits')}</span>
                 <span className="value">{status.credit_balance ?? '--'}</span>
@@ -945,6 +935,9 @@ function SettingsPanel({
           <option value="dark">{t('themeDark')}</option>
         </select>
       </label>
+      <button className="settings-button secondary" type="button" onClick={onClose}>
+        {t('closeSettings')}
+      </button>
       {config.taskbar_strip && (
         <button className="settings-button" type="button" onClick={() => saveConfig({ ...config, taskbar_strip: false, source_mode: 'app_server' })}>
           {t('backToFloat')}
@@ -973,9 +966,6 @@ function SettingsPanel({
       </div>
         </>
       )}
-      <button className="settings-button secondary" type="button" onClick={onClose}>
-        {t('closeSettings')}
-      </button>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+use crate::quota::{collect_limit_windows, normalize_rate_limits, parse_limit};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -101,6 +102,10 @@ pub struct LimitWindow {
     pub resets_at: Option<i64>,
     pub reset_text: Option<String>,
     pub reached_type: Option<String>,
+    #[serde(skip)]
+    pub semantic_id: Option<String>,
+    #[serde(skip)]
+    pub semantic_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +117,8 @@ pub struct CodexMeterStatus {
     pub plan_type: Option<String>,
     pub primary: Option<LimitWindow>,
     pub secondary: Option<LimitWindow>,
+    pub five_hour: Option<LimitWindow>,
+    pub weekly: Option<LimitWindow>,
     pub credit_balance: Option<f64>,
     pub credit_limit: Option<f64>,
     pub reset_credits_available: Option<i64>,
@@ -385,6 +392,8 @@ async fn read_codex_status_from_app_server() -> Result<CodexMeterStatus, String>
             plan_type: None,
             primary: None,
             secondary: None,
+            five_hour: None,
+            weekly: None,
             credit_balance: None,
             credit_limit: None,
             reset_credits_available: None,
@@ -403,8 +412,10 @@ async fn read_codex_status_from_app_server() -> Result<CodexMeterStatus, String>
         plan_type = selected_limits.get("planType").and_then(Value::as_str).map(str::to_string);
     }
 
-    let primary = parse_limit("主额度", selected_limits.get("primary"));
-    let secondary = parse_limit("副额度", selected_limits.get("secondary"));
+    let primary = parse_limit("primary", selected_limits.get("primary"));
+    let secondary = parse_limit("secondary", selected_limits.get("secondary"));
+    let limit_windows = collect_limit_windows(selected_limits);
+    let normalized = normalize_rate_limits(&limit_windows);
 
     let reset_credits_available = limits
         .pointer("/rateLimitResetCredits/availableCount")
@@ -419,7 +430,12 @@ async fn read_codex_status_from_app_server() -> Result<CodexMeterStatus, String>
         .or_else(|| find_credit_number(Some(&limits), &["individual", "limit"]))
         .or_else(|| find_credit_number(usage.as_ref(), &["credit", "limit"]));
 
-    let ok = primary.is_some() || secondary.is_some() || credit_balance.is_some() || reset_credits_available.is_some();
+    let ok = primary.is_some()
+        || secondary.is_some()
+        || normalized.five_hour.is_some()
+        || normalized.weekly.is_some()
+        || credit_balance.is_some()
+        || reset_credits_available.is_some();
 
     Ok(CodexMeterStatus {
         ok,
@@ -429,6 +445,8 @@ async fn read_codex_status_from_app_server() -> Result<CodexMeterStatus, String>
         plan_type,
         primary,
         secondary,
+        five_hour: normalized.five_hour,
+        weekly: normalized.weekly,
         credit_balance,
         credit_limit,
         reset_credits_available,
@@ -448,6 +466,8 @@ pub fn parse_client_usage_text(text: String) -> CodexMeterStatus {
             plan_type: None,
             primary: None,
             secondary: None,
+            five_hour: None,
+            weekly: None,
             credit_balance: None,
             credit_limit: None,
             reset_credits_available: None,
@@ -459,13 +479,13 @@ pub fn parse_client_usage_text(text: String) -> CodexMeterStatus {
     let primary = parse_percent_window(
         &lines,
         "5小时",
-        &["5-hour", "5 hour", "5h", "5 小时", "5小时", "five hour", "session", "primary", "short"],
+        &["5-hour", "5 hour", "5h", "5 小时", "5小时", "five hour", "session", "short"],
         Some(300),
     );
     let secondary = parse_percent_window(
         &lines,
         "周额度",
-        &["weekly", "week", "7-day", "7 day", "周", "secondary", "long"],
+        &["weekly", "week", "7-day", "7 day", "周", "long"],
         Some(10080),
     );
     let (credit_balance, credit_limit) = parse_credits(&lines);
@@ -473,6 +493,14 @@ pub fn parse_client_usage_text(text: String) -> CodexMeterStatus {
     let plan_type = parse_plan_type(&lines);
 
     let any = primary.is_some() || secondary.is_some() || credit_balance.is_some() || credit_limit.is_some() || reset_credits_available.is_some();
+
+    let normalized = normalize_rate_limits(
+        &[primary.as_ref(), secondary.as_ref()]
+            .into_iter()
+            .flatten()
+            .cloned()
+            .collect::<Vec<_>>(),
+    );
 
     CodexMeterStatus {
         ok: any,
@@ -486,29 +514,13 @@ pub fn parse_client_usage_text(text: String) -> CodexMeterStatus {
         plan_type,
         primary,
         secondary,
+        five_hour: normalized.five_hour,
+        weekly: normalized.weekly,
         credit_balance,
         credit_limit,
         reset_credits_available,
         updated_at_ms,
     }
-}
-
-fn parse_limit(label: &str, value: Option<&Value>) -> Option<LimitWindow> {
-    let value = value?;
-    if value.is_null() {
-        return None;
-    }
-    let used = value.get("usedPercent").and_then(Value::as_f64);
-    let remaining = used.map(|v| 100.0 - v);
-    Some(LimitWindow {
-        label: label.to_string(),
-        used_percent: used,
-        remaining_percent: remaining,
-        window_duration_mins: value.get("windowDurationMins").and_then(Value::as_i64),
-        resets_at: value.get("resetsAt").and_then(Value::as_i64),
-        reset_text: None,
-        reached_type: value.get("rateLimitReachedType").and_then(Value::as_str).map(str::to_string),
-    })
 }
 
 fn select_codex_rate_limits(limits: &Value) -> &Value {
@@ -552,6 +564,8 @@ fn parse_percent_window(lines: &[String], label: &str, keywords: &[&str], durati
                 resets_at: None,
                 reset_text: extract_reset_text(&block),
                 reached_type: None,
+                semantic_id: None,
+                semantic_label: Some(label.to_string()),
             });
         }
     }
@@ -846,8 +860,8 @@ mod tests {
         let status = parse_client_usage_text(text.to_string());
         assert!(status.ok);
         assert_eq!(status.plan_type.as_deref(), Some("plus"));
-        assert_eq!(status.primary.unwrap().remaining_percent.unwrap().round() as i32, 72);
-        assert_eq!(status.secondary.unwrap().remaining_percent.unwrap().round() as i32, 41);
+        assert_eq!(status.five_hour.unwrap().remaining_percent.unwrap().round() as i32, 72);
+        assert_eq!(status.weekly.unwrap().remaining_percent.unwrap().round() as i32, 41);
         assert_eq!(status.credit_balance.unwrap().round() as i32, 12);
         assert_eq!(status.credit_limit.unwrap().round() as i32, 30);
         assert_eq!(status.reset_credits_available, Some(2));

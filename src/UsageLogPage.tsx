@@ -20,7 +20,8 @@ const DEFAULT_PREFERENCES: UsageLogPreferences = {
 };
 const PAGE_SIZE = 100;
 
-function formatPercent(value: number): string {
+function formatPercent(value: number | null): string {
+  if (value === null) return '--';
   if (value > 0 && value < 0.05) return '<0.1%';
   return `${value.toFixed(1)}%`;
 }
@@ -119,12 +120,17 @@ export default function UsageLogPage({ lang }: { lang: Language }) {
     [preferences, view?.tasks],
   );
   const summary = useMemo(() => {
-    const weeklyTotal = filtered.reduce((total, task) => total + task.weeklyConsumedPercent, 0);
+    const weeklyValues = filtered
+      .map((task) => task.weeklyConsumedPercent)
+      .filter((value): value is number => value !== null);
+    const weeklyTotal = weeklyValues.length
+      ? weeklyValues.reduce((total, value) => total + value, 0)
+      : null;
     const longest = filtered.reduce((maximum, task) => Math.max(maximum, task.durationSeconds), 0);
     return {
       count: filtered.length,
       weeklyTotal,
-      weeklyAverage: filtered.length ? weeklyTotal / filtered.length : 0,
+      weeklyAverage: weeklyTotal === null ? null : weeklyTotal / weeklyValues.length,
       longest,
     };
   }, [filtered]);

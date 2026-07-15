@@ -17,6 +17,8 @@ button { -webkit-app-region: no-drag; }
   --base-width: 215px;
   --base-height: 178px;
   --content-scale: 1;
+  --strip-primary-text: #f4f7ff;
+  --strip-secondary-text: rgba(244, 247, 255, 0.72);
   width: 100vw;
   height: 100vh;
   padding: 0;
@@ -300,8 +302,9 @@ button { -webkit-app-region: no-drag; }
   line-height: 1.36;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  color: var(--strip-primary-text);
 }
-.strip-lines span { margin-left: 6px; color: rgba(244,247,255,0.72); }
+.strip-lines span { margin-left: 6px; color: var(--strip-secondary-text); }
 .strip-actions { display: none; }
 .strip-settings {
   position: static;
@@ -416,7 +419,8 @@ button { -webkit-app-region: no-drag; }
   }
 }
 
-.meter.theme-light { color: #172033; background: rgba(246, 249, 255, 0.96); box-shadow: 0 8px 24px rgba(38, 54, 82, 0.2); }
+.meter.theme-light { --strip-primary-text: #172033; --strip-secondary-text: rgba(23, 32, 51, 0.68); color: #172033; background: rgba(246, 249, 255, 0.96); box-shadow: 0 8px 24px rgba(38, 54, 82, 0.2); }
+.meter.theme-dark { --strip-primary-text: #f4f7ff; --strip-secondary-text: rgba(244, 247, 255, 0.72); }
 .meter.theme-light .settings { background: rgba(30, 72, 140, 0.035); border-color: rgba(32, 54, 88, 0.12); }
 .meter.theme-light .label, .meter.theme-light .settings label { color: rgba(23, 32, 51, 0.7); }
 .meter.theme-light .sub, .meter.theme-light .footer, .meter.theme-light .hint, .meter.theme-light .about, .meter.theme-light .support-desc, .meter.theme-light .qr-item span { color: rgba(23, 32, 51, 0.52); }
@@ -431,6 +435,7 @@ button { -webkit-app-region: no-drag; }
 
 @media (prefers-color-scheme: light) {
   :root { color: #172033; }
+  .meter.theme-system { --strip-primary-text: #172033; --strip-secondary-text: rgba(23, 32, 51, 0.68); }
   .meter { color: #172033; background: rgba(246, 249, 255, 0.96); box-shadow: 0 8px 24px rgba(38, 54, 82, 0.2); }
   .settings { background: rgba(30, 72, 140, 0.035); border-color: rgba(32, 54, 88, 0.12); }
   .label, .settings label { color: rgba(23, 32, 51, 0.7); }

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { filterAndSortUsageTasks } from '../src/usageLogUtils.js';
 
 const now = new Date('2026-07-15T12:00:00+08:00');
@@ -11,7 +12,7 @@ function task(id, weekly, startedAtMs = now.getTime(), durationSeconds = 60) {
     endedAtMs: startedAtMs + durationSeconds * 1_000,
     durationSeconds,
     weeklyConsumedPercent: weekly,
-    fiveHourConsumedPercent: weekly * 2,
+    fiveHourConsumedPercent: weekly === null ? null : weekly * 2,
     recordMode: 'automatic',
     isComplete: true,
     isEstimated: false,
@@ -60,4 +61,43 @@ test('sort modes order by latest, weekly consumption, and duration', () => {
   assert.deepEqual(filterAndSortUsageTasks(tasks, preferences(), now).map((item) => item.id), ['new-low', 'old-high', 'long']);
   assert.deepEqual(filterAndSortUsageTasks(tasks, preferences({ sortMode: 'weekly' }), now).map((item) => item.id), ['old-high', 'long', 'new-low']);
   assert.deepEqual(filterAndSortUsageTasks(tasks, preferences({ sortMode: 'duration' }), now).map((item) => item.id), ['long', 'new-low', 'old-high']);
+});
+
+test('unknown weekly usage is included only by the all filter and sorts last', () => {
+  const tasks = [task('unknown', null), task('known', 3)];
+  assert.deepEqual(
+    filterAndSortUsageTasks(tasks, preferences(), now).map((item) => item.id),
+    ['known'],
+  );
+  assert.deepEqual(
+    filterAndSortUsageTasks(tasks, preferences({ weeklyFilter: 'all', sortMode: 'weekly' }), now).map((item) => item.id),
+    ['known', 'unknown'],
+  );
+});
+
+test('theme classes own strip text variables and explicit themes are independent of system media', () => {
+  const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /\.meter\.theme-light\s*\{[^}]*--strip-primary-text:/s);
+  assert.match(css, /\.meter\.theme-dark\s*\{[^}]*--strip-primary-text:/s);
+  assert.match(css, /\.meter\.theme-system\s*\{[^}]*--strip-primary-text:/s);
+  assert.match(css, /\.strip-lines\s*\{[^}]*color:\s*var\(--strip-primary-text\)/s);
+  assert.match(css, /\.strip-lines span\s*\{[^}]*color:\s*var\(--strip-secondary-text\)/s);
+});
+
+test('quota UI reads normalized fields and keeps fixed semantic titles', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  const messages = readFileSync(new URL('../src/i18n.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(app, /status\?*\.primary|status\?*\.secondary/);
+  assert.match(app, /status\?\.five_hour/);
+  assert.match(app, /status\?\.weekly/);
+  assert.doesNotMatch(messages, /主额度|副额度|'Primary'/);
+});
+
+test('close settings action follows the theme selector and precedes strip reset', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  const theme = app.indexOf('value={config.theme}');
+  const close = app.indexOf("{t('closeSettings')}", theme);
+  const backToFloat = app.indexOf("{t('backToFloat')}", theme);
+  assert.ok(theme >= 0 && close > theme && backToFloat > close);
+  assert.equal(app.indexOf("{t('closeSettings')}", close + 1), -1);
 });
