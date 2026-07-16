@@ -139,13 +139,13 @@ LX Codex Meter 不收集用户数据。
 推荐安装包：
 
 ```
-LX.Codex.Meter_0.6.14_x64-setup.exe
+LX.Codex.Meter_0.6.15_x64-setup.exe
 ```
 
 备用安装包：
 
 ```
-LX.Codex.Meter_0.6.14_x64_en-US.msi
+LX.Codex.Meter_0.6.15_x64_en-US.msi
 ```
 
 下载地址：
@@ -296,13 +296,13 @@ Requests that have already been started but not yet completed are not forcibly a
 Recommended installer:
 
 ```
-LX.Codex.Meter_0.6.14_x64-setup.exe
+LX.Codex.Meter_0.6.15_x64-setup.exe
 ```
 
 Alternative installer:
 
 ```
-LX.Codex.Meter_0.6.14_x64_en-US.msi
+LX.Codex.Meter_0.6.15_x64_en-US.msi
 ```
 
 Downloads:
