@@ -2,13 +2,17 @@
 
 [English](#english) | [中文](#中文)
 
+**免费 · 开源 · 无广告 | Free · Open Source · Ad-Free**
+
+[▶ 观看 1 分钟功能演示 / Watch the 1-minute demo](docs/media/LXCodexMeter_v0.6.15_demo.mp4)
+
 ---
 
 <a id="中文"></a>
 
 ## 中文
 
-**本地、轻量、注重隐私的 Windows Codex 额度桌面监控工具。**
+**免费、开源、无广告，本地、轻量、注重隐私的 Windows Codex 额度桌面监控工具。**
 
 无需反复打开 Codex Usage 页面，即可在桌面悬浮窗或任务栏条中查看：
 
@@ -169,7 +173,7 @@ LX.Codex.Meter_0.6.16_x64_en-US.msi
 
 ## English
 
-**A lightweight, privacy-focused Windows desktop meter for Codex usage.**
+**A free, open-source, ad-free, lightweight, privacy-focused Windows desktop meter for Codex usage.**
 
 View the following without repeatedly opening the Codex Usage page:
 
