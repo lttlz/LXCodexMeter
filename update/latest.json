@@ -1,19 +1,19 @@
 {
-  "version": "0.6.15",
-  "notes": "LX Codex Meter v0.6.15",
-  "pub_date": "2026-07-15T22:31:44.566Z",
+  "version": "0.6.16",
+  "notes": "LX Codex Meter v0.6.16",
+  "pub_date": "2026-07-18T17:24:58.767Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTYjFuSTdyUVI0RGZXTnJ4RitxQXRacWk5M2cxWSszUm96Z1VwbDVIMkYvUDBGQW1XM3RtZms5TlRWWGlmM3ZvUXphVGNhSVVQdHhPdk4vOFU0aDl4TWFpTjk4T0pvSGdjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0MTU0NzAxCWZpbGU6TFggQ29kZXggTWV0ZXJfMC42LjE1X3g2NC1zZXR1cC5leGUKdFVRc201cThsRjdqTFZ5ZTZDdlJhSVJVcUtMK3g4T3QwSjhOZDhIWUZ2QkdVaGJUdXpCOThETmNtR3U0MGFmMVZoY3hmMXlwdVB0VVZqNnluN0t5RGc9PQo=",
-      "url": "https://gitee.com/lttlz/LXCodexMeter/releases/download/v0.6.15/LX.Codex.Meter_0.6.15_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTYjFuSTdyUVI0RFNnWkU3bUVTTjBWM2ZqWDc0eG0xaEpudXJaWWVXVXlVRXZoaTU3SGVXTjRxODBpTE1HMzBZYmdDdmlldm9Cc0h1VmZ4WUxrQTJaYjNLeUMzNTRuc2dzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0Mzk1NDk1CWZpbGU6TFggQ29kZXggTWV0ZXJfMC42LjE2X3g2NC1zZXR1cC5leGUKYk82NytnYzFsZTdmem1sS3Nla3ZJemdJbTZKeGY2QUFLVFN5ZmNtN3JSZ2g1WEZVSTl4blBLeXhvdUJicWYwenpTRUd4dnRsS3l2dVhBVUZJVjR3Qnc9PQo=",
+      "url": "https://gitee.com/lttlz/LXCodexMeter/releases/download/v0.6.16/LX.Codex.Meter_0.6.16_x64-setup.exe"
     },
     "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTYjFuSTdyUVI0RGZXTnJ4RitxQXRacWk5M2cxWSszUm96Z1VwbDVIMkYvUDBGQW1XM3RtZms5TlRWWGlmM3ZvUXphVGNhSVVQdHhPdk4vOFU0aDl4TWFpTjk4T0pvSGdjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0MTU0NzAxCWZpbGU6TFggQ29kZXggTWV0ZXJfMC42LjE1X3g2NC1zZXR1cC5leGUKdFVRc201cThsRjdqTFZ5ZTZDdlJhSVJVcUtMK3g4T3QwSjhOZDhIWUZ2QkdVaGJUdXpCOThETmNtR3U0MGFmMVZoY3hmMXlwdVB0VVZqNnluN0t5RGc9PQo=",
-      "url": "https://gitee.com/lttlz/LXCodexMeter/releases/download/v0.6.15/LX.Codex.Meter_0.6.15_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTYjFuSTdyUVI0RFNnWkU3bUVTTjBWM2ZqWDc0eG0xaEpudXJaWWVXVXlVRXZoaTU3SGVXTjRxODBpTE1HMzBZYmdDdmlldm9Cc0h1VmZ4WUxrQTJaYjNLeUMzNTRuc2dzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0Mzk1NDk1CWZpbGU6TFggQ29kZXggTWV0ZXJfMC42LjE2X3g2NC1zZXR1cC5leGUKYk82NytnYzFsZTdmem1sS3Nla3ZJemdJbTZKeGY2QUFLVFN5ZmNtN3JSZ2g1WEZVSTl4blBLeXhvdUJicWYwenpTRUd4dnRsS3l2dVhBVUZJVjR3Qnc9PQo=",
+      "url": "https://gitee.com/lttlz/LXCodexMeter/releases/download/v0.6.16/LX.Codex.Meter_0.6.16_x64-setup.exe"
     },
     "windows-x86_64-msi": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTYjFuSTdyUVI0RGE5S0VvSk83YlFJcGY1UjZWaDRUR2JDVllHS1NYRUljbE1lb2s4QUtNa0J4bWVTY0xXYm1lTy8vRndIRnRpWG84TkgwRDNjaERYTEdGdVZCLzM4aXc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0MTU0NzAxCWZpbGU6TFggQ29kZXggTWV0ZXJfMC42LjE1X3g2NF9lbi1VUy5tc2kKekhHTFp1TXRaTnZHUjFiWXNkbld0M0d5V2o3UzZzNVhDSHNJNjlwUmQ4bUZ5N2psRUVUQnNwUFJWWjZHMFcwdUg3VlZ2UnZMZDY2MXBXU0M2Z0oxRFE9PQo=",
-      "url": "https://gitee.com/lttlz/LXCodexMeter/releases/download/v0.6.15/LX.Codex.Meter_0.6.15_x64_en-US.msi"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTYjFuSTdyUVI0RGVCS3B0bTZqb0hRbDU0ekRzRTNTMlBsbGVKT1BDK2UySFJPUGNpTWNsRlN6ZWsyTEtLZEtQMXU0eGJEcHZ3dDZENlRTbDByMDlER3BXcitMYm04RFFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0Mzk1NDk0CWZpbGU6TFggQ29kZXggTWV0ZXJfMC42LjE2X3g2NF9lbi1VUy5tc2kKblRwSk1kOFZ5Q0hVUW5aNzhxdXBwbGZUTkhKWDR1M0tINy9ZZ25FOEpnZjJqRUtYWnREMGhoaWNRclozcFllcm93OGdTN2l6U1FlajFUVFBxKzBUQWc9PQo=",
+      "url": "https://gitee.com/lttlz/LXCodexMeter/releases/download/v0.6.16/LX.Codex.Meter_0.6.16_x64_en-US.msi"
     }
   }
 }
