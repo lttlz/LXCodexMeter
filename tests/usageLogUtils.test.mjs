@@ -219,6 +219,18 @@ test('close settings action follows the theme selector and strip mode changes us
   assert.match(css, /\.settings-button:disabled/);
 });
 
+test('closing settings restores the captured inner size instead of reusing the outer size', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  const closeStart = app.indexOf('const closeSettingsNow');
+  const closeEnd = app.indexOf('const refresh', closeStart);
+  const closeBlock = app.slice(closeStart, closeEnd);
+
+  assert.match(app, /win\.innerSize\(\)\.catch/);
+  assert.match(closeBlock, /snapshot\.originalInnerSize\.width/);
+  assert.match(closeBlock, /snapshot\.originalInnerSize\.height/);
+  assert.doesNotMatch(closeBlock, /setSize\(new PhysicalSize\(restored\.width, restored\.height\)\)/);
+});
+
 test('runtime and package versions are consistently upgraded to 0.6.15', () => {
   const expected = '0.6.15';
   const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));

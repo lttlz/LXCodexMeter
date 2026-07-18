@@ -45,6 +45,7 @@ type WindowBaseSize = {
 
 type SettingsWindowSnapshot = {
   originalWindow: WindowRect;
+  originalInnerSize: WindowBaseSize;
   originalBottom: number;
   workArea: WindowRect;
   scaleFactor: number;
@@ -412,7 +413,7 @@ export default function App() {
       ]);
       const scaleFactor = monitor?.scaleFactor || windowScaleFactor || 1;
       const fallbackScreen = window.screen as Screen & { availLeft?: number; availTop?: number };
-      const [outerPosition, outerSize] = await Promise.all([
+      const [outerPosition, outerSize, innerSize] = await Promise.all([
         win.outerPosition().catch(() => new PhysicalPosition(
           Math.round(window.screenX * scaleFactor),
           Math.round(window.screenY * scaleFactor),
@@ -420,6 +421,10 @@ export default function App() {
         win.outerSize().catch(() => new PhysicalSize(
           Math.max(1, Math.round((window.outerWidth || window.innerWidth) * scaleFactor)),
           Math.max(1, Math.round((window.outerHeight || window.innerHeight) * scaleFactor)),
+        )),
+        win.innerSize().catch(() => new PhysicalSize(
+          Math.max(1, Math.round(window.innerWidth * scaleFactor)),
+          Math.max(1, Math.round(window.innerHeight * scaleFactor)),
         )),
       ]);
       const workArea = monitor ? {
@@ -441,6 +446,10 @@ export default function App() {
       };
       settingsSnapshotRef.current = preserveInitialWindowSnapshot(settingsSnapshotRef.current, {
         originalWindow,
+        originalInnerSize: {
+          width: innerSize.width,
+          height: innerSize.height,
+        },
         originalBottom: originalWindow.y + originalWindow.height,
         workArea,
         scaleFactor,
@@ -499,9 +508,9 @@ export default function App() {
         height: monitor.workArea.size.height,
       } : snapshot.workArea;
       const restored = calculateRestoredWindowGeometry(snapshot.originalWindow, workAreas, fallbackWorkArea);
-      const logicalViewport = physicalSizeToLogical(restored, snapshot.scaleFactor);
+      const logicalViewport = physicalSizeToLogical(snapshot.originalInnerSize, snapshot.scaleFactor);
 
-      await win.setSize(new PhysicalSize(restored.width, restored.height)).catch(() => undefined);
+      await win.setSize(new PhysicalSize(snapshot.originalInnerSize.width, snapshot.originalInnerSize.height)).catch(() => undefined);
       await win.setPosition(new PhysicalPosition(restored.x, restored.y)).catch(() => undefined);
       setViewportSize(logicalViewport);
 
@@ -509,7 +518,7 @@ export default function App() {
         programmaticResizeTimerRef.current = window.setTimeout(resolve, 90);
       });
       programmaticResizeTimerRef.current = undefined;
-      await win.setSize(new PhysicalSize(restored.width, restored.height)).catch(() => undefined);
+      await win.setSize(new PhysicalSize(snapshot.originalInnerSize.width, snapshot.originalInnerSize.height)).catch(() => undefined);
       await win.setPosition(new PhysicalPosition(restored.x, restored.y)).catch(() => undefined);
       await win.setAlwaysOnTop(snapshot.taskbarStrip || config.always_on_top).catch(() => undefined);
       setViewportSize(logicalViewport);
