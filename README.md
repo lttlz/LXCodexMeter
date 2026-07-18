@@ -4,7 +4,7 @@
 
 **免费 · 开源 · 无广告 | Free · Open Source · Ad-Free**
 
-[▶ 观看 1 分钟功能演示 / Watch the 1-minute demo](docs/media/LXCodexMeter_v0.6.15_demo.mp4)
+[▶ 观看 1 分钟功能演示 / Watch the 1-minute demo](https://github.com/lttlz/LXCodexMeter/raw/refs/heads/main/docs/media/LXCodexMeter_v0.6.15_demo.mp4)
 
 ---
 
