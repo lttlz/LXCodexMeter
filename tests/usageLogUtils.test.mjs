@@ -201,13 +201,15 @@ test('quota UI reads normalized fields and keeps fixed semantic titles', () => {
   assert.doesNotMatch(messages, /主额度|副额度|'Primary'/);
 });
 
-test('close settings action follows the theme selector and precedes strip reset', () => {
+test('close settings action follows the theme selector and strip mode changes use the close transaction', () => {
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
   const theme = app.indexOf('value={config.theme}');
   const close = app.indexOf("{t('closeSettings')}", theme);
   const backToFloat = app.indexOf("{t('backToFloat')}", theme);
   assert.ok(theme >= 0 && close > theme && backToFloat > close);
+  assert.match(app, /onChange=\{\(e\) => onTaskbarStripChange\(e\.target\.checked\)\}/);
+  assert.match(app, /onClick=\{\(\) => onTaskbarStripChange\(false\)\}/);
   assert.equal(app.indexOf("{t('closeSettings')}", close + 1), -1);
   assert.match(app.slice(Math.max(0, close - 180), close), /className="settings-button"/);
   assert.doesNotMatch(app.slice(Math.max(0, close - 180), close), /secondary/);

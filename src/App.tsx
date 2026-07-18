@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, CSSProperties, MouseEvent, Ref, SyntheticEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { LogicalPosition, LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi';
-import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
+import { LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
+import { availableMonitors, currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { Menu } from '@tauri-apps/api/menu';
 import type { CodexMeterStatus, Language, LimitWindow, MeterConfig, ThemeMode } from './types';
 import { tr } from './i18n';
@@ -12,6 +12,14 @@ import UsageLogPage from './UsageLogPage';
 import donationQr from './assets/support/donation-qr.png';
 import wechatQr from './assets/support/wechat-qr.png';
 import logoImg from './assets/logo.png';
+import {
+  calculateAnchoredSettingsGeometry,
+  calculateRestoredWindowGeometry,
+  logicalSizeToPhysical,
+  physicalSizeToLogical,
+  preserveInitialWindowSnapshot,
+} from './windowGeometry.js';
+import type { WindowRect } from './windowGeometry.js';
 
 const APP_NAME = 'LX Codex Meter';
 const APP_VERSION = '0.6.15';
@@ -33,6 +41,14 @@ const WINDOW_MOVE_DEBOUNCE_MS = 100;
 type WindowBaseSize = {
   width: number;
   height: number;
+};
+
+type SettingsWindowSnapshot = {
+  originalWindow: WindowRect;
+  originalBottom: number;
+  workArea: WindowRect;
+  scaleFactor: number;
+  taskbarStrip: boolean;
 };
 
 const DEFAULT_CONFIG: MeterConfig = {
@@ -80,13 +96,6 @@ function getLayoutBaseHeight(
   if (open) return settingsHeight ?? DEFAULT_SETTINGS_HEIGHT;
   if (strip) return STRIP_LAYOUT_BASE_HEIGHT;
   return statusOk === false ? FLOATING_ERROR_LAYOUT_BASE_HEIGHT : FLOATING_OK_LAYOUT_BASE_HEIGHT;
-}
-
-function getAvailableWindowHeight(): number {
-  const availableHeight = Math.round(window.screen?.availHeight || 0);
-  if (availableHeight <= 0) return Number.MAX_SAFE_INTEGER;
-  const top = Number.isFinite(window.screenY) ? Math.max(0, Math.round(window.screenY)) : 0;
-  return Math.max(1, availableHeight - top - 8);
 }
 
 function getTargetWindowSize(
@@ -215,9 +224,12 @@ export default function App() {
   const [viewportSize, setViewportSize] = useState<WindowBaseSize>(() => getViewportSize());
   const [userWindowWidth, setUserWindowWidth] = useState(() => getInitialUserWindowWidth());
   const [settingsContentHeight, setSettingsContentHeight] = useState<number | null>(null);
+  const [settingsMaxLogicalHeight, setSettingsMaxLogicalHeight] = useState<number | null>(null);
   const programmaticResizeRef = useRef(false);
   const programmaticResizeTimerRef = useRef<number | undefined>(undefined);
   const settingsOpenRef = useRef(settingsOpen);
+  const settingsTransitionRef = useRef(false);
+  const settingsSnapshotRef = useRef<SettingsWindowSnapshot | null>(null);
   const lastBaseKeyRef = useRef('');
   const userWindowWidthRef = useRef<number | null>(null);
   const titlebarRef = useRef<HTMLElement | null>(null);
@@ -244,7 +256,7 @@ export default function App() {
     settingsContentHeight,
   );
   const contentScale = clamp(userWindowWidth / layoutBaseWidth, 0.1, 10);
-  const maxHeight = settingsOpen ? getAvailableWindowHeight() : Number.MAX_SAFE_INTEGER;
+  const maxHeight = settingsOpen ? settingsMaxLogicalHeight ?? DEFAULT_SETTINGS_HEIGHT : Number.MAX_SAFE_INTEGER;
   const targetWindowSize = getTargetWindowSize(
     userWindowWidth,
     layoutBaseHeight,
@@ -335,6 +347,40 @@ export default function App() {
     }, 90);
   }, [clampNormalWindowAboveTaskbar]);
 
+  const applySettingsWindowGeometry = useCallback(async (size: WindowBaseSize) => {
+    const snapshot = settingsSnapshotRef.current;
+    if (!snapshot || !settingsOpenRef.current) return;
+
+    const geometry = calculateAnchoredSettingsGeometry(
+      snapshot.originalWindow,
+      snapshot.workArea,
+      logicalSizeToPhysical(size, snapshot.scaleFactor),
+    );
+    const logicalViewport = physicalSizeToLogical(geometry, snapshot.scaleFactor);
+    const win = getCurrentWindow();
+    programmaticResizeRef.current = true;
+    if (programmaticResizeTimerRef.current) {
+      window.clearTimeout(programmaticResizeTimerRef.current);
+      programmaticResizeTimerRef.current = undefined;
+    }
+
+    await win.setPosition(new PhysicalPosition(geometry.x, geometry.y)).catch(() => undefined);
+    await win.setSize(new PhysicalSize(geometry.width, geometry.height)).catch(() => undefined);
+    setViewportSize(logicalViewport);
+
+    // Keep the retry in the same transaction so it cannot race the normal 90 ms resize sync.
+    programmaticResizeTimerRef.current = window.setTimeout(async () => {
+      if (!settingsOpenRef.current || settingsSnapshotRef.current !== snapshot) return;
+      await win.setPosition(new PhysicalPosition(geometry.x, geometry.y)).catch(() => undefined);
+      await win.setSize(new PhysicalSize(geometry.width, geometry.height)).catch(() => undefined);
+      await win.setAlwaysOnTop(snapshot.taskbarStrip || config.always_on_top).catch(() => undefined);
+      await win.setFocus().catch(() => undefined);
+      setViewportSize(logicalViewport);
+      programmaticResizeRef.current = false;
+      programmaticResizeTimerRef.current = undefined;
+    }, 90);
+  }, [config.always_on_top]);
+
   const syncUserWindowWidth = useCallback((width: number) => {
     const nextWidth = normalizeWindowWidth(width, userWindowWidthRef.current ?? DEFAULT_WINDOW_WIDTH);
     if (Math.abs((userWindowWidthRef.current ?? 0) - nextWidth) <= 1) return;
@@ -353,19 +399,127 @@ export default function App() {
     setSettingsContentHeight((current) => (current !== null && Math.abs(current - nextHeight) <= 1 ? current : nextHeight));
   }, [config.taskbar_strip, settingsOpen]);
 
-  const openSettings = useCallback(() => {
+  const openSettings = useCallback(async () => {
+    if (settingsOpenRef.current || settingsTransitionRef.current) return;
+    settingsTransitionRef.current = true;
     // User-initiated open: tell the backend watcher not to auto-hide afterwards.
     void invoke('mark_manual_show').catch(() => undefined);
-    setSettingsOpen(true);
-    window.setTimeout(() => {
-      void getCurrentWindow().show();
-      void getCurrentWindow().setFocus();
-    }, 0);
-  }, []);
+    const win = getCurrentWindow();
+    try {
+      const [monitor, windowScaleFactor] = await Promise.all([
+        currentMonitor().catch(() => null),
+        win.scaleFactor().catch(() => window.devicePixelRatio || 1),
+      ]);
+      const scaleFactor = monitor?.scaleFactor || windowScaleFactor || 1;
+      const fallbackScreen = window.screen as Screen & { availLeft?: number; availTop?: number };
+      const [outerPosition, outerSize] = await Promise.all([
+        win.outerPosition().catch(() => new PhysicalPosition(
+          Math.round(window.screenX * scaleFactor),
+          Math.round(window.screenY * scaleFactor),
+        )),
+        win.outerSize().catch(() => new PhysicalSize(
+          Math.max(1, Math.round((window.outerWidth || window.innerWidth) * scaleFactor)),
+          Math.max(1, Math.round((window.outerHeight || window.innerHeight) * scaleFactor)),
+        )),
+      ]);
+      const workArea = monitor ? {
+        x: monitor.workArea.position.x,
+        y: monitor.workArea.position.y,
+        width: monitor.workArea.size.width,
+        height: monitor.workArea.size.height,
+      } : {
+        x: Math.round((fallbackScreen.availLeft || 0) * scaleFactor),
+        y: Math.round((fallbackScreen.availTop || 0) * scaleFactor),
+        width: Math.max(1, Math.round((fallbackScreen.availWidth || window.innerWidth) * scaleFactor)),
+        height: Math.max(1, Math.round((fallbackScreen.availHeight || window.innerHeight) * scaleFactor)),
+      };
+      const originalWindow = {
+        x: outerPosition.x,
+        y: outerPosition.y,
+        width: outerSize.width,
+        height: outerSize.height,
+      };
+      settingsSnapshotRef.current = preserveInitialWindowSnapshot(settingsSnapshotRef.current, {
+        originalWindow,
+        originalBottom: originalWindow.y + originalWindow.height,
+        workArea,
+        scaleFactor,
+        taskbarStrip: config.taskbar_strip,
+      });
+      setSettingsMaxLogicalHeight(Math.max(1, Math.floor(workArea.height / scaleFactor)));
+      setSettingsOpen(true);
+      window.setTimeout(() => {
+        void win.show();
+        void win.setFocus();
+      }, 0);
+    } finally {
+      settingsTransitionRef.current = false;
+    }
+  }, [config.taskbar_strip]);
 
-  const closeSettingsNow = useCallback(() => {
+  const closeSettingsNow = useCallback(async () => {
+    const snapshot = settingsSnapshotRef.current;
+    if (!snapshot || settingsTransitionRef.current) {
+      if (!snapshot) setSettingsOpen(false);
+      return;
+    }
+    settingsTransitionRef.current = true;
+    const normalLayoutBaseHeight = getLayoutBaseHeight(config.taskbar_strip, false, status?.ok, null);
+    const normalTargetSize = getTargetWindowSize(
+      userWindowWidthRef.current ?? userWindowWidth,
+      normalLayoutBaseHeight,
+      contentScale,
+      Number.MAX_SAFE_INTEGER,
+    );
+    lastBaseKeyRef.current = `${normalTargetSize.width}x${normalTargetSize.height}:${config.taskbar_strip}:false:${status?.ok === false}`;
     setSettingsOpen(false);
-  }, []);
+
+    const win = getCurrentWindow();
+    if (programmaticResizeTimerRef.current) {
+      window.clearTimeout(programmaticResizeTimerRef.current);
+      programmaticResizeTimerRef.current = undefined;
+    }
+    programmaticResizeRef.current = true;
+
+    try {
+      const [monitors, monitor] = await Promise.all([
+        availableMonitors().catch(() => []),
+        currentMonitor().catch(() => null),
+      ]);
+      const workAreas = monitors.map((item) => ({
+        x: item.workArea.position.x,
+        y: item.workArea.position.y,
+        width: item.workArea.size.width,
+        height: item.workArea.size.height,
+      }));
+      const fallbackWorkArea = monitor ? {
+        x: monitor.workArea.position.x,
+        y: monitor.workArea.position.y,
+        width: monitor.workArea.size.width,
+        height: monitor.workArea.size.height,
+      } : snapshot.workArea;
+      const restored = calculateRestoredWindowGeometry(snapshot.originalWindow, workAreas, fallbackWorkArea);
+      const logicalViewport = physicalSizeToLogical(restored, snapshot.scaleFactor);
+
+      await win.setSize(new PhysicalSize(restored.width, restored.height)).catch(() => undefined);
+      await win.setPosition(new PhysicalPosition(restored.x, restored.y)).catch(() => undefined);
+      setViewportSize(logicalViewport);
+
+      await new Promise<void>((resolve) => {
+        programmaticResizeTimerRef.current = window.setTimeout(resolve, 90);
+      });
+      programmaticResizeTimerRef.current = undefined;
+      await win.setSize(new PhysicalSize(restored.width, restored.height)).catch(() => undefined);
+      await win.setPosition(new PhysicalPosition(restored.x, restored.y)).catch(() => undefined);
+      await win.setAlwaysOnTop(snapshot.taskbarStrip || config.always_on_top).catch(() => undefined);
+      setViewportSize(logicalViewport);
+    } finally {
+      settingsSnapshotRef.current = null;
+      setSettingsMaxLogicalHeight(null);
+      programmaticResizeRef.current = false;
+      settingsTransitionRef.current = false;
+    }
+  }, [config.always_on_top, config.taskbar_strip, contentScale, status?.ok, userWindowWidth]);
 
   const refresh = useCallback(async () => {
     if (refreshInFlightRef.current) return;
@@ -531,8 +685,9 @@ export default function App() {
     if (lastBaseKeyRef.current === baseKey) return;
 
     lastBaseKeyRef.current = baseKey;
-    void resizeWindowToBase(targetWindowSize);
-  }, [config.taskbar_strip, configReady, resizeWindowToBase, settingsOpen, status?.ok, targetWindowSize]);
+    if (settingsOpen) void applySettingsWindowGeometry(targetWindowSize);
+    else void resizeWindowToBase(targetWindowSize);
+  }, [applySettingsWindowGeometry, config.taskbar_strip, configReady, resizeWindowToBase, settingsOpen, status?.ok, targetWindowSize]);
 
   useEffect(() => {
     refresh();
@@ -574,10 +729,15 @@ export default function App() {
     closeSettingsNow();
   }, [closeSettingsNow]);
 
+  const changeStripMode = useCallback(async (enabled: boolean) => {
+    if (enabled === config.taskbar_strip) return;
+    if (settingsOpenRef.current) await closeSettingsNow();
+    await saveConfig({ ...config, taskbar_strip: enabled, show_floating_window: true, source_mode: 'app_server' });
+  }, [closeSettingsNow, config, saveConfig]);
+
   const toggleStripMode = useCallback(() => {
-    setSettingsOpen(false);
-    void saveConfig({ ...config, taskbar_strip: !config.taskbar_strip, show_floating_window: true, source_mode: 'app_server' });
-  }, [config, saveConfig]);
+    void changeStripMode(!config.taskbar_strip);
+  }, [changeStripMode, config.taskbar_strip]);
 
   const hideToTray = useCallback(() => {
     void invoke('hide_to_tray').catch((error) => {
@@ -601,20 +761,24 @@ export default function App() {
       await menu.popup(undefined, getCurrentWindow());
     } catch {
       // Fallback: if native popup is blocked by permissions/runtime, open settings instead of showing a clipped web menu.
-      setSettingsOpen(true);
+      void openSettings();
     }
   }, [config.taskbar_strip, refresh, settingsOpen, toggleStripMode, hideToTray, openSettings, closeSettingsNow, t]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     listen('meter-toggle-strip-requested', () => {
-      setSettingsOpen(false);
-      void saveConfig({ ...config, taskbar_strip: !config.taskbar_strip, show_floating_window: true, source_mode: 'app_server' });
+      void closeSettingsNow().then(() => saveConfig({
+        ...config,
+        taskbar_strip: !config.taskbar_strip,
+        show_floating_window: true,
+        source_mode: 'app_server',
+      }));
     }).then((unlisten) => {
       cleanup = unlisten;
     });
     return () => cleanup?.();
-  }, [config, saveConfig]);
+  }, [closeSettingsNow, config, saveConfig]);
 
   const meterStyle = {
     opacity: config.opacity,
@@ -655,6 +819,7 @@ export default function App() {
                 config={config}
                 saveConfig={saveConfig}
                 onClose={closeSettings}
+                onTaskbarStripChange={changeStripMode}
                 lang={lang}
                 rootRef={settingsPanelRef}
               />
@@ -690,6 +855,7 @@ export default function App() {
               config={config}
               saveConfig={saveConfig}
               onClose={closeSettings}
+              onTaskbarStripChange={changeStripMode}
               lang={lang}
               rootRef={settingsPanelRef}
             />
@@ -721,12 +887,14 @@ function SettingsPanel({
   config,
   saveConfig,
   onClose,
+  onTaskbarStripChange,
   lang,
   rootRef,
 }: {
   config: MeterConfig;
   saveConfig: (next: MeterConfig) => Promise<void>;
   onClose: () => void;
+  onTaskbarStripChange: (enabled: boolean) => void;
   lang: Language;
   rootRef?: Ref<HTMLDivElement>;
 }) {
@@ -833,7 +1001,7 @@ function SettingsPanel({
         <input
           type="checkbox"
           checked={config.taskbar_strip}
-          onChange={(e) => saveConfig({ ...config, taskbar_strip: e.target.checked, source_mode: 'app_server' })}
+          onChange={(e) => onTaskbarStripChange(e.target.checked)}
         />
         {t('taskbarStrip')}
       </label>
@@ -946,7 +1114,7 @@ function SettingsPanel({
         {t('closeSettings')}
       </button>
       {config.taskbar_strip && (
-        <button className="settings-button" type="button" onClick={() => saveConfig({ ...config, taskbar_strip: false, source_mode: 'app_server' })}>
+        <button className="settings-button" type="button" onClick={() => onTaskbarStripChange(false)}>
           {t('backToFloat')}
         </button>
       )}

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "test:frontend": "node --test tests/usageLogUtils.test.mjs",
+    "test:frontend": "node --test tests/usageLogUtils.test.mjs tests/windowGeometry.test.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
