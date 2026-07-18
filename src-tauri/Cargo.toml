@@ -3,6 +3,7 @@ name = "lx-codex-meter"
 version = "0.6.16"
 description = "Local-only Codex quota meter with tray and floating window"
 authors = ["lttlz"]
+license-file = "../LICENSE"
 edition = "2021"
 
 [lib]
