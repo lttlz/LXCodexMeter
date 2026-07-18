@@ -8,7 +8,7 @@
 
 ## 中文
 
-**本地、轻量、注重隐私的 Windows Codex 额度桌面监控工具。**
+**本地、轻量、注重隐私的 Windows Codex 额度桌面监控与消耗统计工具。**
 
 无需反复打开 Codex Usage 页面，即可在桌面悬浮窗或任务栏条中查看：
 
@@ -16,10 +16,11 @@
 - 周额度与重置时间
 - Credits 余额
 - 最近刷新时间
+- 每次任务的额度消耗与持续时间
 
 LX Codex Meter 可以跟随 Codex / ChatGPT 的运行状态自动显示或隐藏，让额度信息在需要时出现，不需要时安静留在托盘。
 
-> 只显示你需要的额度信息，不读取你的对话、项目、网页或浏览器数据。
+> 只显示和统计你需要的额度信息，不读取你的对话、项目、网页或浏览器数据。
 
 ## 为什么选择 LX Codex Meter
 
@@ -28,6 +29,22 @@ LX Codex Meter 可以跟随 Codex / ChatGPT 的运行状态自动显示或隐藏
 不需要切换到 Usage 页面，也不需要在浏览器和开发工具之间来回查找。
 
 额度信息始终以紧凑悬浮窗或任务栏条的形式显示在 Windows 桌面上。
+
+### 额度消耗统计，不再靠猜
+
+LX Codex Meter 会根据本机保存的额度快照变化，估算每次任务的持续时间、周额度消耗和 5 小时额度消耗。
+
+消耗日志支持：
+
+- 查看任务数量、周额度总消耗、平均每次消耗和最长任务
+- 按今天、最近 7 天、最近 30 天或全部时间筛选
+- 按周额度消耗阈值筛选，并支持自定义阈值
+- 按时间、周额度消耗或任务时长排序
+- 查看每次任务结束时的周额度和 5 小时额度余额
+- 将当前筛选结果导出为 CSV
+- 删除单条历史日志或清空全部历史日志
+
+统计依据是本机额度快照变化，因此属于估算结果，不读取 Codex 对话或任务内容。
 
 ### 跟随 Codex 自动出现和隐藏
 
@@ -91,6 +108,12 @@ LX Codex Meter 不会读取：
 - 周额度重置时间
 - Credits 信息显示
 - 最近刷新时间
+- 本机额度快照记录
+- 每次任务持续时间估算
+- 每次任务周额度与 5 小时额度消耗估算
+- 消耗日志筛选、排序和汇总统计
+- 当前筛选结果导出 CSV
+- 历史日志单条删除与全部清空
 - 悬浮窗模式
 - 任务栏条模式
 - Codex / ChatGPT 启动时自动显示
@@ -115,6 +138,8 @@ Codex / ChatGPT 运行状态检测使用本机进程名和父进程关系：
 - 不读取完整命令行
 - 不扫描 Codex 文件
 - 不读取会话内容
+
+额度消耗统计通过比较本机保存的额度快照变化进行估算，不读取提示词、对话内容或项目文件。
 
 ## 隐私说明
 
@@ -169,7 +194,7 @@ LX.Codex.Meter_0.6.16_x64_en-US.msi
 
 ## English
 
-**A lightweight, privacy-focused Windows desktop meter for Codex usage.**
+**A lightweight, privacy-focused Windows desktop meter and usage statistics tool for Codex.**
 
 View the following without repeatedly opening the Codex Usage page:
 
@@ -177,16 +202,33 @@ View the following without repeatedly opening the Codex Usage page:
 - Weekly usage limits and reset time
 - Credit balance
 - Last refresh time
+- Per-task usage and duration estimates
 
 LX Codex Meter can automatically appear when Codex or ChatGPT starts and hide to the system tray when they close.
 
-> See the usage information you need without reading your conversations, projects, browser data, or web pages.
+> See and analyze the usage information you need without reading your conversations, projects, browser data, or web pages.
 
 ## Why LX Codex Meter
 
 ### Usage at a glance
 
 Keep Codex limits visible in a compact floating window or taskbar strip without repeatedly opening the Usage page.
+
+### Per-task usage statistics
+
+LX Codex Meter estimates each task's duration, weekly usage, and 5-hour usage from locally stored quota snapshot changes.
+
+The usage log supports:
+
+- Task count, total weekly usage, average usage per task, and longest task summaries
+- Today, last 7 days, last 30 days, and all-time filters
+- Weekly-usage threshold filters, including a custom threshold
+- Sorting by time, weekly usage, or task duration
+- Remaining weekly and 5-hour quota at the end of each task
+- CSV export of the currently filtered results
+- Deleting individual historical records or clearing all history
+
+These values are estimates based on local quota snapshots. The app does not read Codex conversations or task contents.
 
 ### Lifecycle-aware auto show and hide
 
@@ -248,6 +290,12 @@ LX Codex Meter does not read:
 - Weekly usage reset time
 - Credits information display
 - Last refresh time
+- Local quota snapshot history
+- Per-task duration estimates
+- Per-task weekly and 5-hour usage estimates
+- Usage-log filtering, sorting, and summary statistics
+- CSV export of filtered results
+- Delete individual history records or clear all history
 - Floating window mode
 - Taskbar strip mode
 - Auto show when Codex / ChatGPT starts
@@ -272,6 +320,8 @@ Codex / ChatGPT lifecycle detection uses local process names and parent process 
 - Full command lines are not read
 - Codex files are not scanned
 - Session contents are not read
+
+Usage statistics are estimated by comparing locally stored quota snapshots. Prompts, conversations, and project files are not read.
 
 ## Privacy
 
