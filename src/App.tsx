@@ -22,7 +22,7 @@ import {
 import type { WindowRect } from './windowGeometry.js';
 
 const APP_NAME = 'LX Codex Meter';
-const APP_VERSION = '0.6.15';
+const APP_VERSION = '0.6.16';
 const APP_AUTHOR = 'lttlz';
 const GITHUB_URL = 'https://github.com/lttlz/LXCodexMeter';
 const GITEE_URL = 'https://gitee.com/lttlz/LXCodexMeter';

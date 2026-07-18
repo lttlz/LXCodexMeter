@@ -231,17 +231,19 @@ test('closing settings restores the captured inner size instead of reusing the o
   assert.doesNotMatch(closeBlock, /setSize\(new PhysicalSize\(restored\.width, restored\.height\)\)/);
 });
 
-test('runtime and package versions are consistently upgraded to 0.6.15', () => {
-  const expected = '0.6.15';
+test('runtime and package versions are consistently upgraded to 0.6.16', () => {
+  const expected = '0.6.16';
   const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   const packageLock = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8'));
   const tauri = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
   const cargo = readFileSync(new URL('../src-tauri/Cargo.toml', import.meta.url), 'utf8');
+  const cargoLock = readFileSync(new URL('../src-tauri/Cargo.lock', import.meta.url), 'utf8');
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   assert.equal(packageJson.version, expected);
   assert.equal(packageLock.version, expected);
   assert.equal(packageLock.packages[''].version, expected);
   assert.equal(tauri.version, expected);
-  assert.match(cargo, /^version = "0\.6\.15"$/m);
-  assert.match(app, /APP_VERSION = '0\.6\.15'/);
+  assert.match(cargo, /^version = "0\.6\.16"$/m);
+  assert.match(cargoLock, /\[\[package\]\]\r?\nname = "lx-codex-meter"\r?\nversion = "0\.6\.16"/);
+  assert.match(app, /APP_VERSION = '0\.6\.16'/);
 });
